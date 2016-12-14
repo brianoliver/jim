@@ -1,0 +1,39 @@
+doctype html
+html(lang="en")
+
+    head
+        title="Jira Issue Migrator (JIM)"
+
+    body
+        h1 Jira Issue Migrator (JIM)!
+
+
+    form(method='post' action='/migrate')
+        fieldset
+            legend java.net Project Information
+
+            p
+                label(for='project') Project Key:
+                    select(id="project" name="project" size="1")
+                        option(value="") -- Select Project --
+                        each proj in jiraProjectList
+                            option(value= proj.key) #{proj.name}
+
+        p/
+
+        fieldset
+                legend Github Information:
+
+                p
+                    label(for='repository') Repository:
+                        input(id='repository' type="text", name="repository")
+                p
+                    label(for="username") Username:
+                        input(id='username' type='text', name='username')
+                p
+                    label(for='token') Username:
+                        input(id='token' type="text", name="token")
+
+        p/
+
+        input(type="submit" value="Migrate")

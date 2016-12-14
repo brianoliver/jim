@@ -21,6 +21,7 @@ var jiraDateFormat          = require('./jim-jira').jiraDateFormat;
 var jiraDateFrom            = require('./jim-jira').jiraDateFrom;
 var jiraDateToJavaScript    = require('./jim-jira').jiraDateToJavaScript;
 var jiraHtmlToMarkdown      = require('./jim-jira').jiraHtmlToMarkdown;
+var jiraGetProjectList      = require('./jim-jira').jiraGetProjectList;
 
 var toString                = require('./jim-strings').toString;
 
@@ -54,6 +55,15 @@ app.use(session({
     resave: false,
     saveUninitialized: false
 }));
+
+app.get('/', function(req, res){
+    // Call the jiraGetProjectList function to get the list of projects from java.net
+    jiraGetProjectList.then(function(json) {
+        // when the list of projects comes back render the page, passing the project list json to the template
+        res.render('index', {"jiraProjectList" : json})
+    })
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.post('/migrate', function (req, res) {

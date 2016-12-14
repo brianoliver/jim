@@ -2,7 +2,9 @@
  * JIRA Content Conversion Functions
  */
 
-var moment = require('moment');
+var fetch      = require('node-fetch');
+var https      = require('https');
+var moment     = require('moment');
 var toMarkdown = require('to-markdown');
 
 var jiraDateFormat = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
@@ -69,7 +71,13 @@ function jiraHtmlToMarkdown(html, projectKey)
     return markdown;
 }
 
+var jiraGetProjectList = fetch('https://java.net/jira/rest/api/2/project')
+    .then(function(res) {
+        return res.json();
+    });
+
 exports.jiraDateFormat       = jiraDateFormat;
 exports.jiraDateFrom         = jiraDateFrom;
 exports.jiraDateToJavaScript = jiraDateToJavaScript;
 exports.jiraHtmlToMarkdown   = jiraHtmlToMarkdown;
+exports.jiraGetProjectList   = jiraGetProjectList;
