@@ -8,9 +8,6 @@ var randomColor = require("randomcolor");
 var request     = require('request-promise');
 var retry       = require('bluebird-retry');
 
-var milestones    = {};
-var collaborators = {};
-
 // constants
 var USER_AGENT = 'JIM: brian.oliver@me.com';
 
@@ -217,7 +214,7 @@ function createIssue(github, username, token, repository, issue, comments, miles
 }
 
 
-function getCollaborators(github, username, repository)
+function getCollaborators(github, username, repository, collaborators)
 {
     return new Promise(function (resolve, reject) {
         console.log("Obtaining Collaborators from GitHub");
@@ -241,7 +238,7 @@ function getCollaborators(github, username, repository)
 /**
  * Obtains an array of all the Milestones.
  */
-function getMilestones(github, username, repository)
+function getMilestones(github, username, repository, milestones)
 {
     return new Promise(function (resolve, reject) {
         console.log("Obtaining Milestones from GitHub");
@@ -270,8 +267,5 @@ exports.createMilestone     = createMilestone;
 exports.getCollaborators    = getCollaborators;
 exports.getIssue            = getIssue;
 exports.getMilestones       = getMilestones;
-
-exports.milestones          = milestones;
-exports.collaborators       = collaborators;
 
 exports.USER_AGENT          = USER_AGENT;

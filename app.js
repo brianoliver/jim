@@ -32,8 +32,6 @@ var getCollaborators        = require('./jim-github').getCollaborators;
 var getIssue                = require('./jim-github').getIssue;
 var getMilestones           = require('./jim-github').getMilestones;
 
-var collaborators           = require('./jim-github').collaborators;
-var milestones              = require('./jim-github').milestones;
 var USER_AGENT              = require('./jim-github').USER_AGENT;
 
 // define our application
@@ -272,6 +270,10 @@ app.post('/migrate', function (req, res) {
                 {
                     res.write("<p>Connected to Github.  Commencing Issue Creation.</p>");
 
+                    // the milestones and collaborators known to github for the project
+                    var milestones    = {};
+                    var collaborators = {};
+
                     // an array of initialization promises
                     // (these need to be complete before we can start creating issues)
                     var initialization = [];
@@ -321,11 +323,11 @@ app.post('/migrate', function (req, res) {
                         }));
 
                     // acquire the known collaborators
-                    initialization.push(getCollaborators(github, username, repository));
+                    initialization.push(getCollaborators(github, username, repository, collaborators));
 
                     Promise.all(initialization).then(function() {
 
-                        return getMilestones(github, username, repository);
+                        return getMilestones(github, username, repository, milestones);
 
                     }).then(function() {
                         console.log("Creating GitHub Issues for JIRA Issues");
