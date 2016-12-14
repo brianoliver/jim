@@ -81,14 +81,21 @@ function getIssue(github, username, repository, number) {
 }
 
 
-function createIssueIfAbsent(github, username, token, repository, issue, comments, milestones, collaborators, timeout) {
+function createIssueIfAbsent(github, username, token, repository, issue, comments, milestones, collaborators, timeout, response) {
     return getIssue(github, username, repository, issue.id)
         .then(function(existing) {
+
+            var jiraProject = issue.project
+            var jiraIssue = issue.id;
+
             console.log("Skipping JIRA Issue: " + issue.id + " as a GitHub Issue already exists");
+
+            response.write("<p>Skipping the migration of JIRA " + jiraProject + "-" + jiraIssue + " as it already exists.</p>");
+
             return Promise.resolve();
         })
         .catch(function(error) {
-            return createIssue(github, username, token, repository, issue, comments, milestones, collaborators, timeout)
+            return createIssue(github, username, token, repository, issue, comments, milestones, collaborators, timeout, response)
         });
 }
 
@@ -96,12 +103,16 @@ function createIssueIfAbsent(github, username, token, repository, issue, comment
 /**
  * Creates a GitHub Issue.
  */
-function createIssue(github, username, token, repository, issue, comments, milestones, collaborators, timeout)
+function createIssue(github, username, token, repository, issue, comments, milestones, collaborators, timeout, response)
 {
     return new Promise(function (resolve, reject) {
+
+        var jiraProject = issue.project
         var jiraIssue = issue.id;
 
         console.log("Migrating JIRA Issue: " + jiraIssue + " to GitHub");
+
+        response.write("<p>Creating GitHub issue for JIRA " + jiraProject + "-" + jiraIssue + ".  ");
 
         // create milestone (when there's a fix version)
         if (issue.fixVersion) {
@@ -175,7 +186,9 @@ function createIssue(github, username, token, repository, issue, comments, miles
         request(options)
             .then(function (body) {
                 if (body.id) {
-                    console.log("Migrating JIRA Issue: " + jiraIssue + ".  Created GitHub Request: " + body.id + ". (" + body.status + ")");
+                    console.log("Migrating JIRA " + project + "-" + jiraIssue + ".  Created GitHub Request: " + body.id + ". (" + body.status + ")");
+
+                    response.write("Created GitHub Request " + body.id + ".  ");
 
                     // wait until the issue is imported
                     options.method = 'GET';
@@ -198,16 +211,25 @@ function createIssue(github, username, token, repository, issue, comments, miles
                     }, { timeout: timeout })
                         .done(function(githubIssue) {
                             console.log("Created GitHub Issue #" + githubIssue + " for JIRA Issue: " + jiraIssue)
+
+                            response.write("Successfully created GitHub Issue # " + githubIssue + ".</p>");
+
                             resolve(body);
                         });
 
                 } else {
                     console.log("Failed to migrate JIRA Issue: " + jiraIssue + " because: " + body.message);
+
+                    response.write("Failed to migrate JIRA Issue " + jiraIssue + " because: " + body.message + "</p>");
+
                     reject(body);
                 }
             })
             .catch(function (error) {
                 console.log("Failed to migrate JIRA Issue: " + issue + " due to " + error);
+
+                response.write("Failed to migrate JIRA Issue " + issue + " due to " + error + "</p>");
+
                 reject(error);
             });
     });

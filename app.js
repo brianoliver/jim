@@ -263,7 +263,7 @@ app.post('/migrate', function (req, res) {
             {
                 if (error)
                 {
-                    res.write("<p>Failed to connect to Github: " + error + "</p>");
+                    res.write("<p>Failed to perform migration.  GitHub reported the following error: " + error + "</p>");
                     res.end();
                 }
                 else
@@ -334,7 +334,7 @@ app.post('/migrate', function (req, res) {
 
                         // create the issues
                         return Promise.each(issues, function(issue) {
-                            return createIssueIfAbsent(github, username, token, repository, issue.issue, issue.comments, milestones, collaborators, timeout);
+                            return createIssueIfAbsent(github, username, token, repository, issue.issue, issue.comments, milestones, collaborators, timeout, res);
                         });
 
                     }).then(function () {
