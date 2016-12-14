@@ -67,4 +67,6 @@ that should explicitly expose port 3000 or expose all ports with the -P option, 
 ```
 
 You should then be able to navigate to `http:<docker-host>:<port>` where `<docker-host>` is the host name of the Docker 
-host and `<port>` is the port that Docker has NAT'ed to port 3000 in the container.  
+host and `<port>` is the port that Docker has NAT'ed to port 3000 in the container.
+  
+For a demo of running Jim on the Google Cloud Platform using Kubernetes see the [googlecloud](googlecloud/README.md) folder.   
