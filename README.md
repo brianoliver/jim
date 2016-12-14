@@ -50,3 +50,21 @@ Or just to run locally use:
 ```
 
 Then navigate to:  `http://localhost:3000/`
+
+# Running in Docker
+
+From the root folder run:
+
+```
+    docker build -t jim:1.0 .
+```
+
+This will build an image called ```jim:1.0``` which can be run with a normal Docker run command
+that should explicitly expose port 3000 or expose all ports with the -P option, for example:
+
+```
+    docker run -d -P --name jim jim:1.0
+```
+
+You should then be able to navigate to `http:<docker-host>:<port>` where `<docker-host>` is the host name of the Docker 
+host and `<port>` is the port that Docker has NAT'ed to port 3000 in the container.  
