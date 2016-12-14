@@ -261,11 +261,12 @@ app.post('/migrate', function (req, res) {
             });
 
             // acquire the repository
-            github.repos.get({ user: username, repo: repository}, function (error, data)
+            github.repos.get({ owner: username, repo: repository}, function (error, data)
             {
                 if (error)
                 {
                     res.write("<p>Failed to connect to Github: " + error + "</p>");
+                    res.end();
                 }
                 else
                 {

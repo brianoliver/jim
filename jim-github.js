@@ -19,7 +19,7 @@ var USER_AGENT = 'JIM: brian.oliver@me.com';
  */
 function createMilestone(github, username, repository, title) {
     return new Promise(function (resolve, reject) {
-        github.issues.createMilestone({user: username, repo: repository, title: title}, function (error, response) {
+        github.issues.createMilestone({owner: username, repo: repository, title: title}, function (error, response) {
             if (error) {
                 // when the milestone already exists we carry on
                 if (error.message.search("already_exists")) {
@@ -54,7 +54,7 @@ function createLabel(github, username, repository, name, color)
             color = color.substr(1);
         }
 
-        github.issues.createLabel({ user:username, repo:repository, name: name, color:color}, function (error, response)
+        github.issues.createLabel({ owner:username, repo:repository, name: name, color:color}, function (error, response)
         {
             if (error) {
                 // when label already exists we carry on
@@ -73,7 +73,7 @@ function createLabel(github, username, repository, name, color)
 
 function getIssue(github, username, repository, number) {
     return new Promise(function (resolve, reject) {
-        github.issues.getRepoIssue({ user:username, repo:repository, number:number}, function(error, response) {
+        github.issues.get({ owner:username, repo:repository, number:number}, function(error, response) {
             if (error) {
                 return reject(error);
             } else {
@@ -222,7 +222,7 @@ function getCollaborators(github, username, repository)
     return new Promise(function (resolve, reject) {
         console.log("Obtaining Collaborators from GitHub");
 
-        github.repos.getCollaborators({user: username, repo: repository}, function (error, response) {
+        github.repos.getCollaborators({owner: username, repo: repository}, function (error, response) {
             if (error) {
                 return reject(error);
             } else {
@@ -246,7 +246,7 @@ function getMilestones(github, username, repository)
     return new Promise(function (resolve, reject) {
         console.log("Obtaining Milestones from GitHub");
 
-        github.issues.getAllMilestones({user: username, repo: repository}, function (error, response) {
+        github.issues.getMilestones({owner: username, repo: repository}, function (error, response) {
             if (error) {
                 return reject(error);
             } else {
