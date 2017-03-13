@@ -9,7 +9,7 @@ var request     = require('request-promise');
 var retry       = require('bluebird-retry');
 
 // constants
-var USER_AGENT = 'JIM: brian.oliver@me.com';
+var USER_AGENT = 'JIM: brian.oliver@oracle.com';
 
 /**
  * Creates a GitHub Milestone.
@@ -81,7 +81,7 @@ function getIssue(github, username, repository, number) {
 }
 
 
-function createIssueIfAbsent(github, username, token, repository, issue, comments, milestones, collaborators, timeout, response) {
+function createIssueIfAbsent(github, username, token, repository, issue, comments, milestones, collaborators, timeout, response, defaultusername) {
     return getIssue(github, username, repository, issue.id)
         .then(function(existing) {
 
@@ -95,7 +95,7 @@ function createIssueIfAbsent(github, username, token, repository, issue, comment
             return Promise.resolve();
         })
         .catch(function(error) {
-            return createIssue(github, username, token, repository, issue, comments, milestones, collaborators, timeout, response)
+            return createIssue(github, username, token, repository, issue, comments, milestones, collaborators, timeout, response, defaultusername)
         });
 }
 
@@ -103,7 +103,7 @@ function createIssueIfAbsent(github, username, token, repository, issue, comment
 /**
  * Creates a GitHub Issue.
  */
-function createIssue(github, username, token, repository, issue, comments, milestones, collaborators, timeout, response)
+function createIssue(github, username, token, repository, issue, comments, milestones, collaborators, timeout, response, defaultusername)
 {
     return new Promise(function (resolve, reject) {
 
@@ -126,8 +126,8 @@ function createIssue(github, username, token, repository, issue, comments, miles
 
         // ensure the assignee is a known collaborator (
         if (issue.assignee && (!(issue.assignee in collaborators) || issue.assignee.toLowerCase() == "unassigned")) {
-            // assign the issue the user doing the migration
-            issue.assignee = username;
+            // assign the issue the default username
+            issue.assignee = defaultusername;
         }
 
         // add a comment indicating the issue was automatically imported
@@ -186,7 +186,7 @@ function createIssue(github, username, token, repository, issue, comments, miles
         request(options)
             .then(function (body) {
                 if (body.id) {
-                    console.log("Migrating JIRA " + project + "-" + jiraIssue + ".  Created GitHub Request: " + body.id + ". (" + body.status + ")");
+                    console.log("Migrating JIRA " + jiraProject + "-" + jiraIssue + ".  Created GitHub Request: " + body.id + ". (" + body.status + ")");
 
                     response.write("Created GitHub Request " + body.id + ".  ");
 

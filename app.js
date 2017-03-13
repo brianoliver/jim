@@ -70,10 +70,11 @@ app.post('/migrate', function (req, res) {
 
     var session = req.session;
 
-    var project     = req.body.project;
-    var repository  = req.body.repository;
-    var username    = req.body.username;
-    var token       = req.body.token;
+    var project         = req.body.project;
+    var repository      = req.body.repository;
+    var username        = req.body.username;
+    var defaultusername = req.body.defaultusername;
+    var token           = req.body.token;
 
     var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=project+%3D+" + project + "&tempMax=1000";
 
@@ -334,7 +335,7 @@ app.post('/migrate', function (req, res) {
 
                         // create the issues
                         return Promise.each(issues, function(issue) {
-                            return createIssueIfAbsent(github, username, token, repository, issue.issue, issue.comments, milestones, collaborators, timeout, res);
+                            return createIssueIfAbsent(github, username, token, repository, issue.issue, issue.comments, milestones, collaborators, timeout, res, defaultusername);
                         });
 
                     }).then(function () {
