@@ -45,7 +45,7 @@ function jiraHtmlToMarkdown(html, projectKey)
 
     var codePanelConverter = {
         filter: function(node) {
-            return node.nodeName === "DIV" && node.getAttribute("class") === "code panel";
+            return node.nodeName === "DIV" && (node.getAttribute("class") === "code panel" || node.getAttribute("class") === "preformatted panel");
         },
         replacement: function(content) {
 
@@ -55,7 +55,7 @@ function jiraHtmlToMarkdown(html, projectKey)
                 content = content + "\n";
             }
 
-            return "```\n" + content + "```";
+            return "```\n" + content + "```\n";
         }
     };
 

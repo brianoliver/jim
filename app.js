@@ -178,7 +178,8 @@ app.post('/migrate', function (req, res) {
 
                 issue.assignee = xmlItem.childNamed("assignee").val;
 
-                issue.closed = xmlItem.childNamed("status").val.toLowerCase() == "closed" ? true : false;
+                status = xmlItem.childNamed("status").val.toLowerCase()
+                issue.closed = (status == "closed" | status == "resolved") ? true : false;
 
                 // the fix version will eventually become the milestone
                 var xmlFixVersion = xmlItem.childNamed("fixVersion");
@@ -193,6 +194,12 @@ app.post('/migrate', function (req, res) {
                 childValuesFrom(xmlItem, "type", issue.labels);
                 childValuesFrom(xmlItem, "priority", issue.labels);
                 childValuesFrom(xmlItem, "component", issue.labels);
+                childValuesFrom(xmlItem.childNamed("labels") , "label", issue.labels)
+                // Custom field - Tags
+                var tagsNode = xmlItem.childNamed("customfields").childWithAttribute("id", "customfield_10002")
+                if(tagsNode) {
+                    childValuesFrom(tagsNode.childNamed("customfieldvalues") , "label", issue.labels)
+                }
 
                 // extract the reporter
                 issue.reporter = xmlItem.childNamed("reporter").val;
@@ -222,6 +229,27 @@ app.post('/migrate', function (req, res) {
                             body: author === username ? body : "@" + author + " said:\n" + body
                         });
                     });
+                }
+
+                // ----- extract all attachments and add as comments -----
+                // TODO: Change the url to the new location
+                var xmlAttachments = xmlItem.childNamed("attachments")
+
+                if(xmlAttachments) {
+
+                    xmlAttachments = xmlAttachments.childrenNamed("attachment");
+
+                    xmlAttachments.forEach(function(xmlAttachment) {
+                        var created = jiraDateToJavaScript(xmlAttachment.attr.created);
+                        var url = "https://java.net/jira/secure/attachment/" + xmlAttachment.attr.id  + "/" + xmlAttachment.attr.name;
+                        var body = "File: [" + xmlAttachment.attr.name + "](" + url + ")\n";
+                        body += "Attached By: @" + xmlAttachment.attr.author + "\n";
+
+                        comments.push({
+                            created_at: created,
+                            body: body
+                        });
+                    })
                 }
 
                 issues.push({"issue": issue, "comments": comments});
