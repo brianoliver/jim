@@ -231,6 +231,27 @@ app.post('/migrate', function (req, res) {
                     });
                 }
 
+                // ----- extract all attachments and add as comments -----
+                // TODO: Change the url to the new location
+                var xmlAttachments = xmlItem.childNamed("attachments")
+
+                if(xmlAttachments) {
+
+                    xmlAttachments = xmlAttachments.childrenNamed("attachment");
+
+                    xmlAttachments.forEach(function(xmlAttachment) {
+                        var created = jiraDateToJavaScript(xmlAttachment.attr.created);
+                        var url = "https://java.net/jira/secure/attachment/" + xmlAttachment.attr.id  + "/" + xmlAttachment.attr.name;
+                        var body = "File: [" + xmlAttachment.attr.name + "](" + url + ")\n";
+                        body += "Attached By: @" + xmlAttachment.attr.author + "\n";
+
+                        comments.push({
+                            created_at: created,
+                            body: body
+                        });
+                    })
+                }
+
                 issues.push({"issue": issue, "comments": comments});
             });
 
