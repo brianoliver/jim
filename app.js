@@ -179,7 +179,7 @@ app.post('/migrate', function (req, res) {
                 issue.assignee = xmlItem.childNamed("assignee").val;
 
                 status = xmlItem.childNamed("status").val.toLowerCase()
-                issue.closed = (status == "closed" | status == "resolved") ? true : false;
+                issue.closed = (status == "closed" || status == "resolved") ? true : false;
 
                 // the fix version will eventually become the milestone
                 var xmlFixVersion = xmlItem.childNamed("fixVersion");
