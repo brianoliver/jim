@@ -26,4 +26,12 @@ function toString(collection)
     }
 };
 
+function splitID(issueID)
+{
+    var project = issueID.replace(/(.*)-(.*)/g, "$1");
+    var id = issueID.replace(/(.*)-(.*)/g, "$2");
+    return [project, id]
+}
+
 exports.toString = toString;
+exports.splitID = splitID;
