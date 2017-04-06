@@ -77,8 +77,7 @@ app.post('/migrate', function (req, res) {
     var defaultusername = req.body.defaultusername;
     var token           = req.body.token;
 
-    // var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=project+%3D+" + project + "&tempMax=1000";
-    var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=project+%3D+" + project + "+AND+issue+%3D+GLASSFISH-21430&tempMax=1000";
+    var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=project+%3D+" + project + "&tempMax=1000";
 
     console.log("Requested Migration of Project [" + project + "] from [" + url + "]");
 
