@@ -29,6 +29,7 @@ var splitID                 = require('./jim-strings').splitID;
 var createIssueIfAbsent     = require('./jim-github').createIssueIfAbsent;
 var createLabel             = require('./jim-github').createLabel;
 var createMilestone         = require('./jim-github').createMilestone;
+var createCollaborator      = require('./jim-github').createCollaborator;
 var getCollaborators        = require('./jim-github').getCollaborators;
 var getIssue                = require('./jim-github').getIssue;
 var getMilestones           = require('./jim-github').getMilestones;
@@ -64,6 +65,75 @@ app.get('/', function(req, res){
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Fill in this user name map from some file perhaps?
+var username_map = {};
+// Temporary map
+username_map['mskdeepak'] = 'mskdeepak-oracle'
+username_map['aribandy'] = 'mskdeepak-oracle'
+username_map['edburns'] = 'edburns'
+
+app.post('/collaborators', function(req, res) {
+    var timeout = 60000;
+
+    var repository      = req.body.repository;
+    var username        = req.body.username;
+    var token           = req.body.token;
+
+    var new_collaborators = new Set();
+
+    for (var key in username_map) {
+        new_collaborators.add(username_map[key])
+    }
+
+    console.log("Importing collaborators")
+
+    var github = new GitHub({
+        // required
+        version: "3.0.0",
+        // optional
+        debug: false,
+        protocol: "https",
+        host: "api.github.com",
+        timeout: timeout,
+        headers: {
+            "user-agent": USER_AGENT
+        }
+    });
+
+    github.authenticate({
+        type: "token",
+        token: token
+    });
+
+    // acquire the repository
+    github.repos.get({ owner: username, repo: repository}, function (error, data)
+    {
+        if (error)
+        {
+            res.write("<p>Failed to perform migration.  GitHub reported the following error: " + error + "</p>");
+            res.end();
+        }
+
+        // an array of initialization promises
+        // (these need to be complete before we can start creating issues)
+        var initialization = [];
+
+        res.write("<p>Adding collaborators to the project</p>")
+        initialization.push(
+            Promise.each(new_collaborators, function(collaborator) {
+                return createCollaborator(github, username, repository, collaborator);
+            }).then(function() {
+                res.write("<p>All Collaborators Created</p>");
+            }));
+
+        Promise.all(initialization).then(function() {
+                res.write("<p>Completed Collaborators Migration!</p>");
+                res.end();
+            });
+    });
+
+});
 
 app.post('/migrate', function (req, res) {
 
@@ -176,8 +246,6 @@ app.post('/migrate', function (req, res) {
                 issue.created_at = jiraDateFrom(xmlItem, "created");
                 issue.closed_at = jiraDateFrom(xmlItem, "resolved");
 
-                issue.assignee = xmlItem.childNamed("assignee").val;
-
                 status = xmlItem.childNamed("status").val.toLowerCase()
                 issue.closed = (status == "closed" || status == "resolved") ? true : false;
 
@@ -201,8 +269,14 @@ app.post('/migrate', function (req, res) {
                     childValuesFrom(tagsNode.childNamed("customfieldvalues") , "label", issue.labels)
                 }
 
-                // extract the reporter
-                issue.reporter = xmlItem.childNamed("reporter").val;
+                // extract the assignee and reporter
+                issue.assignee = xmlItem.childNamed("assignee").attr.username;
+                issue.reporter = xmlItem.childNamed("reporter").attr.username;
+                if(issue.assignee in username_map)
+                    issue.assignee = username_map[issue.assignee]
+
+                if(issue.reporter in username_map)
+                    issue.reporter = username_map[issue.reporter]
 
                 // extract the resolution
                 if (xmlItem.childNamed("resolution")) {
@@ -221,12 +295,14 @@ app.post('/migrate', function (req, res) {
 
                     xmlComments.forEach(function(xmlComment) {
                         var author = xmlComment.attr.author;
+                        if(author in username_map)
+                            author = username_map[author]
                         var created = jiraDateToJavaScript(xmlComment.attr.created);
                         var body = jiraHtmlToMarkdown(xmlComment.val, issue.project);
 
                         comments.push({
                             created_at: created,
-                            body: author === username ? body : "@" + author + " said:\n" + body
+                            body: (author in username_map ? "@" : "") + author + " said:\n" + body
                         });
                     });
                 }
@@ -241,9 +317,12 @@ app.post('/migrate', function (req, res) {
 
                     xmlAttachments.forEach(function(xmlAttachment) {
                         var created = jiraDateToJavaScript(xmlAttachment.attr.created);
+                        var author = xmlAttachment.attr.author;
+                        if(author in username_map)
+                            author = username_map[author]
                         var url = "https://java.net/jira/secure/attachment/" + xmlAttachment.attr.id  + "/" + xmlAttachment.attr.name;
                         var body = "File: [" + xmlAttachment.attr.name + "](" + url + ")\n";
-                        body += "Attached By: @" + xmlAttachment.attr.author + "\n";
+                        body += "Attached By: " + (author in username_map ? "@" : "") + author + "\n";
 
                         comments.push({
                             created_at: created,

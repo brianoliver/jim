@@ -67,6 +67,29 @@ function createLabel(github, username, repository, name, color)
     });
 }
 
+/**
+ * Creates a Collaborator in the repository.
+ */
+function createCollaborator(github, username, repository, collaborator)
+{
+    return new Promise(function (resolve, reject) {
+
+        github.repos.addCollaborator({ owner:username, repo:repository, username:collaborator}, function (error, response)
+        {
+            if (error) {
+                // when label already exists we carry on
+                if (error.message.search("already_exists")) {
+                    return resolve();
+                } else {
+                    return reject(error);
+                }
+            } else {
+                return resolve();
+            }
+        });
+    });
+}
+
 
 function getIssue(github, username, repository, number) {
     return new Promise(function (resolve, reject) {
@@ -124,8 +147,16 @@ function createIssue(github, username, token, repository, issue, comments, miles
             }
         }
 
-        // ensure the assignee is a known collaborator (
+        // ensure the assignee is a known collaborator
         if (issue.assignee && (!(issue.assignee in collaborators) || issue.assignee.toLowerCase() == "unassigned")) {
+            // Add a comment storing the old assignee who is not a collaborator
+            if (issue.assignee && issue.assignee.toLowerCase() != "unassigned") {
+                comments.push({
+                    created_at: issue.created_at,
+                    body: "Was assigned to " + issue.assignee
+                });
+            }
+
             // assign the issue the default username
             issue.assignee = defaultusername;
         }
@@ -148,9 +179,8 @@ function createIssue(github, username, token, repository, issue, comments, miles
         if (issue.closed && issue.resolution) {
             comments.push({
                 created_at: issue.closed_at,
-                body: "Marked as **" + issue.resolution.toLowerCase() + "** by " +
-                (collaborators[issue.assignee] ? "@" : "") + issue.assignee +
-                " on " + moment(issue.closed_at).format("dddd, MMMM Do YYYY, h:mm:ss a")
+                body: "Marked as **" + issue.resolution.toLowerCase() +
+                "** on " + moment(issue.closed_at).format("dddd, MMMM Do YYYY, h:mm:ss a")
             });
         }
 
@@ -285,6 +315,7 @@ exports.createIssue         = createIssue;
 exports.createIssueIfAbsent = createIssueIfAbsent;
 exports.createLabel         = createLabel;
 exports.createMilestone     = createMilestone;
+exports.createCollaborator  = createCollaborator;
 
 exports.getCollaborators    = getCollaborators;
 exports.getIssue            = getIssue;
