@@ -24,6 +24,7 @@ var jiraHtmlToMarkdown      = require('./jim-jira').jiraHtmlToMarkdown;
 var jiraGetProjectList      = require('./jim-jira').jiraGetProjectList;
 
 var toString                = require('./jim-strings').toString;
+var splitID                 = require('./jim-strings').splitID;
 
 var createIssueIfAbsent     = require('./jim-github').createIssueIfAbsent;
 var createLabel             = require('./jim-github').createLabel;
@@ -168,8 +169,7 @@ app.post('/migrate', function (req, res) {
 
                 // determine the JIRA Project and Issue ID
                 var key = xmlItem.childNamed("key").val;
-                issue.project = key.replace(/(.*)-(.*)/g, "$1");
-                issue.id = key.replace(/(.*)-(.*)/g, "$2");
+                [issue.project, issue.id] = splitID(key);
 
                 issue.title = xmlItem.childNamed("summary").val;
                 issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
@@ -250,6 +250,73 @@ app.post('/migrate', function (req, res) {
                             body: body
                         });
                     })
+                }
+
+                tmp_project = ""
+                tmp_id = ""
+                // ----- extract all sub-tasks and add as comments -----
+                subtasks = [];
+                childValuesFrom(xmlItem.childNamed("subtasks"), "subtask", subtasks)
+                tmp_body = "Sub-Tasks:\n";
+                for (var i = 0; i < subtasks.length; i++) {
+                    [tmp_project, tmp_id] = splitID(subtasks[i]);
+                    tmp_url = "https://github.com/" + username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
+                    tmp_body += "[" + subtasks[i] + "](" + tmp_url + ")\n";
+                }
+                if(subtasks.length != 0) {
+                    comments.push({
+                        created_at: issue.created_at,
+                        body: tmp_body
+                    });
+                }
+
+                // ----- extract the parent task and add as comment -----
+                var parent = xmlItem.childNamed("parent")
+
+                if(parent) {
+                    tmp_body = "Parent-Task: ";
+                    [tmp_project, tmp_id] = splitID(parent.val);
+                    tmp_url = "https://github.com/" + username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
+                    tmp_body += "[" + parent.val + "](" + tmp_url + ")\n";
+                    comments.push({
+                        created_at: issue.created_at,
+                        body: tmp_body
+                    });
+                }
+
+                // ----- extract all issue-links and add as comments -----
+                var xmlLinks = xmlItem.childNamed("issuelinks")
+                tmp_body = "Issue-Links:\n"
+                if(xmlLinks) {
+                    xmlLinks = xmlLinks.childrenNamed("issuelinktype");
+                    if(xmlLinks) {
+                        xmlLinks.forEach(function(xmlLink) {
+                            var outwardLinks = xmlLink.childNamed("outwardlinks");
+                            var inwardLinks = xmlLink.childNamed("inwardlinks");
+                            if(outwardLinks) {
+                                tmp_body += outwardLinks.attr.description + "\n";
+                                outwardLinks.childrenNamed('issuelink').forEach(function(issuelink){
+                                    tmp_key = issuelink.valueWithPath('issuekey');
+                                    [tmp_project, tmp_id] = splitID(tmp_key);
+                                    tmp_url = "https://github.com/" + username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
+                                    tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
+                                });
+                            }
+                            if(inwardLinks) {
+                                tmp_body += inwardLinks.attr.description + "\n";
+                                inwardLinks.childrenNamed('issuelink').forEach(function(issuelink){
+                                    tmp_key = issuelink.valueWithPath('issuekey');
+                                    [tmp_project, tmp_id] = splitID(tmp_key);
+                                    tmp_url = "https://github.com/" + username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
+                                    tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
+                                });
+                            }
+                        })
+                        comments.push({
+                            created_at: issue.created_at,
+                            body: tmp_body
+                        });
+                    }
                 }
 
                 issues.push({"issue": issue, "comments": comments});
