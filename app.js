@@ -13,6 +13,8 @@ var request         = require('request-promise');
 var retry           = require('bluebird-retry');
 var session         = require('express-session');
 var xmldoc          = require('xmldoc');
+var readline        = require('readline');
+var fs              = require('fs');
 
 // locally defined and provided modules
 var childValuesFrom         = require('./jim-xml').childValuesFrom;
@@ -66,12 +68,17 @@ app.get('/', function(req, res){
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Fill in this user name map from some file perhaps?
+// Fill in this user name map from the file mapping.txt
 var username_map = {};
-// Temporary map
-username_map['mskdeepak'] = 'mskdeepak-oracle'
-username_map['aribandy'] = 'mskdeepak-oracle'
-username_map['edburns'] = 'edburns'
+
+var rl = readline.createInterface({
+    input: fs.createReadStream('mapping.txt')
+});
+
+rl.on('line', (line) => {
+    [javanet_id, gh_id] = line.split(" ");
+    username_map[javanet_id] = gh_id;
+});
 
 app.post('/collaborators', function(req, res) {
     var timeout = 60000;
