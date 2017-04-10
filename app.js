@@ -250,6 +250,8 @@ app.post('/migrate', function (req, res) {
 
                 issue.title = xmlItem.childNamed("summary").val;
                 issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
+                environment = jiraHtmlToMarkdown(xmlItem.childNamed("environment").val);
+                issue.body += "\n#### Environment\n" + environment;
                 issue.created_at = jiraDateFrom(xmlItem, "created");
                 issue.closed_at = jiraDateFrom(xmlItem, "resolved");
 
@@ -266,9 +268,9 @@ app.post('/migrate', function (req, res) {
                 // establish the labels
                 issue.labels = [];
 
-                childValuesFrom(xmlItem, "type", issue.labels);
-                childValuesFrom(xmlItem, "priority", issue.labels);
-                childValuesFrom(xmlItem, "component", issue.labels);
+                childValuesFrom(xmlItem, "type", issue.labels, "Type: ");
+                childValuesFrom(xmlItem, "priority", issue.labels, "Priority: ");
+                childValuesFrom(xmlItem, "component", issue.labels, "Component: ");
                 childValuesFrom(xmlItem.childNamed("labels") , "label", issue.labels)
                 // Custom field - Tags
                 var tagsNode = xmlItem.childNamed("customfields").childWithAttribute("id", "customfield_10002")
@@ -477,7 +479,7 @@ app.post('/migrate', function (req, res) {
 
                     initialization.push(
                         Promise.each(components, function(component) {
-                            return createLabel(github, username, repository, component);
+                            return createLabel(github, username, repository, "Component: " + component);
                         }).then(function() {
                             res.write("<p>All Components Created</p>");
                         }));
@@ -488,7 +490,7 @@ app.post('/migrate', function (req, res) {
 
                     initialization.push(
                         Promise.each(types, function(type) {
-                            return createLabel(github, username, repository, type);
+                            return createLabel(github, username, repository, "Type: " + type);
                         }).then(function() {
                             res.write("<p>All Issue Types Created</p>");
                         }));
@@ -499,7 +501,7 @@ app.post('/migrate', function (req, res) {
 
                     initialization.push(
                         Promise.each(priorities, function(priority) {
-                            return createLabel(github, username, repository, priority);
+                            return createLabel(github, username, repository, "Priority: " + priority);
                         }).then(function() {
                             res.write("<p>All Priorities Created</p>");
                         }));
