@@ -2,6 +2,8 @@
  * GitHub JIRA Issue Helper Functions
  */
 
+// externally defined modules
+var GitHub      = require("github");
 var moment      = require('moment');
 var Promise     = require("bluebird");
 var randomColor = require("randomcolor");
@@ -85,7 +87,7 @@ function createIssueIfAbsent(github, username, token, repository, issue, comment
     return getIssue(github, username, repository, issue.id)
         .then(function(existing) {
 
-            var jiraProject = issue.project
+            var jiraProject = issue.project;
             var jiraIssue = issue.id;
 
             console.log("Skipping JIRA Issue: " + issue.id + " as a GitHub Issue already exists");
@@ -107,7 +109,7 @@ function createIssue(github, username, token, repository, issue, comments, miles
 {
     return new Promise(function (resolve, reject) {
 
-        var jiraProject = issue.project
+        var jiraProject = issue.project;
         var jiraIssue = issue.id;
 
         console.log("Migrating JIRA Issue: " + jiraIssue + " to GitHub");
@@ -183,6 +185,11 @@ function createIssue(github, username, token, repository, issue, comments, miles
             }
         };
 
+        console.log("Importing Issue: " + jiraIssue);
+
+        console.log(issue);
+        console.log(comments);
+
         request(options)
             .then(function (body) {
                 if (body.id) {
@@ -198,11 +205,17 @@ function createIssue(github, username, token, repository, issue, comments, miles
                     retry(function() {
                         return request(options)
                             .then(function(body) {
+
+
+
                                 switch(body.status) {
                                     case "imported":
                                         var githubIssue = body.issue_url.split("/").pop();
                                         return Promise.resolve(githubIssue);
                                     case "failed":
+                                        console.log("$$$$ ERROR $$$$");
+                                        console.log(body);
+                                        
                                         return Promise.reject(new Error(JSON.stringify(body)));
                                     default:
                                         return Promise.reject(new Error('JIRA Issue migration still pending.  Last result:' + JSON.stringify(body)));
@@ -281,6 +294,130 @@ function getMilestones(github, username, repository, milestones)
 }
 
 
+/**
+ * Imports the specified JIRA project into a GitHub Issue tracking system.
+ * 
+ * @param project
+ */
+function importJIRAProject(project, response) {
+
+    // the github timeout (2 minutes)
+    var timeout = 120000;
+
+    // ----- connect and authenticate to github -----
+
+    response.write("<p>Connecting to Github Repository <b>" + project.repository +
+                   "</b> on behalf of <b>" + project.username +
+                   "</b> using token <b>" + project.token + "</b></p>");
+
+    var github = new GitHub({
+        // required
+        version: "3.0.0",
+        // optional
+        debug: false,
+        protocol: "https",
+        host: "api.github.com",
+        timeout: timeout,
+        headers: {
+            "user-agent": USER_AGENT
+        }
+    });
+
+    github.authenticate({
+        type: "token",
+        token: project.token
+    });
+
+    // acquire the repository
+    github.repos.get({ owner: project.username, repo: project.repository}, function (error, data)
+    {
+        if (error)
+        {
+            response.write("<p>Failed to perform migration.  GitHub reported the following error: " + error + "</p>");
+            response.end();
+        }
+        else
+        {
+            response.write("<p>Connected to Github.  Commencing Issue Creation.</p>");
+
+            // the milestones and collaborators known to github for the project
+            var milestones    = {};
+            var collaborators = {};
+
+            // an array of initialization promises
+            // (these need to be complete before we can start creating issues)
+            var initialization = [];
+
+            // ----- create the versions as milestones -----
+
+            response.write("<p>Creating JIRA Versions as GitHub Milestones.</p>");
+
+            initialization.push(
+                Promise.each(project.versions, function(version) {
+                    return createMilestone(github, project.username, project.repository, version);
+                }).then(function() {
+                    response.write("<p>All Versions Created</p>");
+                }));
+
+            // ----- create the components as labels -----
+
+            response.write("<p>Creating JIRA Components as GitHub Labels</p>");
+
+            initialization.push(
+                Promise.each(project.components, function(component) {
+                    return createLabel(github, project.username, project.repository, component);
+                }).then(function() {
+                    response.write("<p>All Components Created</p>");
+                }));
+
+            // ----- create the types as labels -----
+
+            response.write("<p>Creating JIRA Issue Types as GitHub Labels</p>");
+
+            initialization.push(
+                Promise.each(project.types, function(type) {
+                    return createLabel(github, project.username, project.repository, type);
+                }).then(function() {
+                    response.write("<p>All Issue Types Created</p>");
+                }));
+
+            // ----- create the priorities as labels -----
+
+            response.write("<p>Creating JIRA Priorities as GitHub Labels</p>");
+
+            initialization.push(
+                Promise.each(project.priorities, function(priority) {
+                    return createLabel(github, project.username, project.repository, priority);
+                }).then(function() {
+                    response.write("<p>All Priorities Created</p>");
+                }));
+
+            // acquire the known collaborators
+            initialization.push(getCollaborators(github, project.username, project.repository, collaborators));
+
+            Promise.all(initialization).then(function() {
+
+                return getMilestones(github, project.username, project.repository, milestones);
+
+            }).then(function() {
+                console.log("Creating GitHub Issues for JIRA Issues");
+
+                // create the issues
+                return Promise.each(project.issues, function(issue) {
+                    return createIssueIfAbsent(github, project.username, project.token, project.repository, issue.issue, issue.comments, milestones, collaborators, timeout, response, project.defaultusername);
+                });
+
+            }).then(function () {
+
+                response.write("<p>Completed Issue Migration!</p>");
+
+                // we're now done
+                response.end();
+            });
+        }
+    });
+}
+
 exports.createIssue         = createIssue;
 exports.createIssueIfAbsent = createIssueIfAbsent;
 exports.createLabel         = createLabel;
@@ -289,5 +426,7 @@ exports.createMilestone     = createMilestone;
 exports.getCollaborators    = getCollaborators;
 exports.getIssue            = getIssue;
 exports.getMilestones       = getMilestones;
+
+exports.importJIRAProject   = importJIRAProject;
 
 exports.USER_AGENT          = USER_AGENT;
