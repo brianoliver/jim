@@ -6,7 +6,7 @@
  * @param elementName     the name of the child elements from which to extract values
  * @param into            the container (Array or Set) in which to add the extracted child values
  */
-function childValuesFrom(xmlFromElement, elementName, into)
+function childValuesFrom(xmlFromElement, elementName, into, prefix="")
 {
     var xmlElements = xmlFromElement.childrenNamed(elementName);
 
@@ -15,9 +15,9 @@ function childValuesFrom(xmlFromElement, elementName, into)
         xmlElements.forEach(function(xmlElement)
         {
             if (into instanceof Set) {
-                into.add(xmlElement.val);
+                into.add(prefix + xmlElement.val);
             } else if (into instanceof Array) {
-                into.push(xmlElement.val);
+                into.push(prefix + xmlElement.val);
             }
         });
     }

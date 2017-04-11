@@ -74,10 +74,11 @@ function jiraExportIssuesAsXml(projectName, firstIssue, lastIssue, xmlDocuments)
  * Processes the Xml-based JIRA export, updating the JSON-based project
  * with information extracted from the export.
  * 
- * @param xml      xml string of a JIRA xml-bases issue export
- * @param project  the JSON representation of the JIRA project
+ * @param xml           xml string of a JIRA xml-bases issue export
+ * @param project       the JSON representation of the JIRA project
+ * @param username_map  the user name map from java.net to github
  */
-function jiraProcessXmlExport(xml, project) {
+function jiraProcessXmlExport(xml, project, username_map) {
 
     //parse the xml
     var xmlJiraExport = new xmldoc.XmlDocument(xml);
@@ -125,10 +126,12 @@ function jiraProcessXmlExport(xml, project) {
 
         issue.title = xmlItem.childNamed("summary").val;
         issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
+        if (xmlItem.childNamed("environment").val != "") {
+            environment = jiraHtmlToMarkdown(xmlItem.childNamed("environment").val);
+            issue.body += "\n#### Environment\n" + environment;
+        }
         issue.created_at = jiraDateFrom(xmlItem, "created");
         issue.closed_at = jiraDateFrom(xmlItem, "resolved");
-
-        issue.assignee = xmlItem.childNamed("assignee").val;
 
         status = xmlItem.childNamed("status").val.toLowerCase()
         issue.closed = (status == "closed" || status == "resolved") ? true : false;
@@ -143,19 +146,28 @@ function jiraProcessXmlExport(xml, project) {
         // establish the labels
         issue.labels = [];
 
-        childValuesFrom(xmlItem, "type", issue.labels);
-        childValuesFrom(xmlItem, "priority", issue.labels);
-        childValuesFrom(xmlItem, "component", issue.labels);
-        childValuesFrom(xmlItem.childNamed("labels") , "label", issue.labels)
+        childValuesFrom(xmlItem, "type", issue.labels, "Type: ");
+        childValuesFrom(xmlItem, "priority", issue.labels, "Priority: ");
+        childValuesFrom(xmlItem, "component", issue.labels, "Component: ");
+        childValuesFrom(xmlItem.childNamed("labels") , "label", issue.labels);
         
         // Custom field - Tags
-        var tagsNode = xmlItem.childNamed("customfields").childWithAttribute("id", "customfield_10002")
+        var tagsNode = xmlItem.childNamed("customfields").childWithAttribute("id", "customfield_10002");
         if(tagsNode) {
-            childValuesFrom(tagsNode.childNamed("customfieldvalues") , "label", issue.labels)
+            childValuesFrom(tagsNode.childNamed("customfieldvalues") , "label", issue.labels);
         }
 
-        // extract the reporter
-        issue.reporter = xmlItem.childNamed("reporter").val;
+        // extract the assignee and reporter
+        issue.assignee = xmlItem.childNamed("assignee").attr.username;
+        // Unassigned
+        if(xmlItem.childNamed("assignee").val == "Unassigned")
+            issue.assignee = ""
+        issue.reporter = xmlItem.childNamed("reporter").attr.username;
+        if(issue.assignee in username_map)
+            issue.assignee = username_map[issue.assignee];
+
+        if(issue.reporter in username_map)
+            issue.reporter = username_map[issue.reporter];
 
         // extract the resolution
         if (xmlItem.childNamed("resolution")) {
@@ -173,18 +185,19 @@ function jiraProcessXmlExport(xml, project) {
 
             xmlComments.forEach(function(xmlComment) {
                 var author = xmlComment.attr.author;
+                if(author in username_map)
+                    author = "@" + username_map[author];
                 var created = jiraDateToJavaScript(xmlComment.attr.created);
                 var body = jiraHtmlToMarkdown(xmlComment.val, issue.project);
 
                 comments.push({
                     created_at: created,
-                    body: author === project.username ? body : "@" + author + " said:\n" + body
+                    body: author + " said:\n" + body
                 });
             });
         }
 
         // ----- extract all attachments and add as comments -----
-        
         // TODO: Change the url to the new location
         var xmlAttachments = xmlItem.childNamed("attachments")
 
@@ -194,9 +207,12 @@ function jiraProcessXmlExport(xml, project) {
 
             xmlAttachments.forEach(function(xmlAttachment) {
                 var created = jiraDateToJavaScript(xmlAttachment.attr.created);
+                var author = xmlAttachment.attr.author;
+                if(author in username_map)
+                    author = "@" + username_map[author];
                 var url = "https://java.net/jira/secure/attachment/" + xmlAttachment.attr.id  + "/" + xmlAttachment.attr.name;
                 var body = "File: [" + xmlAttachment.attr.name + "](" + url + ")\n";
-                body += "Attached By: @" + xmlAttachment.attr.author + "\n";
+                body += "Attached By: " + author + "\n";
 
                 comments.push({
                     created_at: created,
@@ -205,9 +221,9 @@ function jiraProcessXmlExport(xml, project) {
             })
         }
 
-        tmp_project = "";
-        tmp_id = "";
-        
+        tmp_project = ""
+        tmp_id = ""
+
         // ----- extract all sub-tasks and add as comments -----
         subtasks = [];
         childValuesFrom(xmlItem.childNamed("subtasks"), "subtask", subtasks)

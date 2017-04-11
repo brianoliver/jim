@@ -69,6 +69,29 @@ function createLabel(github, username, repository, name, color)
     });
 }
 
+/**
+ * Creates a Collaborator in the repository.
+ */
+function createCollaborator(github, username, repository, collaborator)
+{
+    return new Promise(function (resolve, reject) {
+
+        github.repos.addCollaborator({ owner:username, repo:repository, username:collaborator}, function (error, response)
+        {
+            if (error) {
+                // when label already exists we carry on
+                if (error.message.search("already_exists")) {
+                    return resolve();
+                } else {
+                    return reject(error);
+                }
+            } else {
+                return resolve();
+            }
+        });
+    });
+}
+
 
 function getIssue(github, username, repository, number) {
     return new Promise(function (resolve, reject) {
@@ -126,8 +149,16 @@ function createIssue(github, username, token, repository, issue, comments, miles
             }
         }
 
-        // ensure the assignee is a known collaborator (
-        if (issue.assignee && (!(issue.assignee in collaborators) || issue.assignee.toLowerCase() == "unassigned")) {
+        // ensure the assignee is a known collaborator
+        if (!(issue.assignee in collaborators)) {
+            // Add a comment storing the old assignee who is not a collaborator
+            if (issue.assignee) {
+                comments.push({
+                    created_at: issue.created_at,
+                    body: "Was assigned to " + issue.assignee
+                });
+            }
+
             // assign the issue the default username
             issue.assignee = defaultusername;
         }
@@ -150,9 +181,8 @@ function createIssue(github, username, token, repository, issue, comments, miles
         if (issue.closed && issue.resolution) {
             comments.push({
                 created_at: issue.closed_at,
-                body: "Marked as **" + issue.resolution.toLowerCase() + "** by " +
-                (collaborators[issue.assignee] ? "@" : "") + issue.assignee +
-                " on " + moment(issue.closed_at).format("dddd, MMMM Do YYYY, h:mm:ss a")
+                body: "Marked as **" + issue.resolution.toLowerCase() +
+                "** on " + moment(issue.closed_at).format("dddd, MMMM Do YYYY, h:mm:ss a")
             });
         }
 
@@ -365,7 +395,7 @@ function importJIRAProject(project, response) {
 
             initialization.push(
                 Promise.each(project.components, function(component) {
-                    return createLabel(github, project.username, project.repository, component);
+                    return createLabel(github, project.username, project.repository, "Component: " +  component);
                 }).then(function() {
                     response.write("<p>All Components Created</p>");
                 }));
@@ -376,7 +406,7 @@ function importJIRAProject(project, response) {
 
             initialization.push(
                 Promise.each(project.types, function(type) {
-                    return createLabel(github, project.username, project.repository, type);
+                    return createLabel(github, project.username, project.repository, "Type: " + type);
                 }).then(function() {
                     response.write("<p>All Issue Types Created</p>");
                 }));
@@ -387,7 +417,7 @@ function importJIRAProject(project, response) {
 
             initialization.push(
                 Promise.each(project.priorities, function(priority) {
-                    return createLabel(github, project.username, project.repository, priority);
+                    return createLabel(github, project.username, project.repository, "Priority: " + priority);
                 }).then(function() {
                     response.write("<p>All Priorities Created</p>");
                 }));
@@ -418,6 +448,66 @@ function importJIRAProject(project, response) {
     });
 }
 
+/**
+ * Create collaborators for the project
+ */
+function importCollaborators(repository, username, token, collaborators, response) {
+
+    var timeout = 120000;
+
+    // ----- connect and authenticate to github -----
+
+    response.write("<p>Connecting to Github Repository <b>" + repository +
+                   "</b> on behalf of <b>" + username +
+                   "</b> using token <b>" + token + "</b></p>");
+
+    var github = new GitHub({
+        // required
+        version: "3.0.0",
+        // optional
+        debug: false,
+        protocol: "https",
+        host: "api.github.com",
+        timeout: timeout,
+        headers: {
+            "user-agent": USER_AGENT
+        }
+    });
+
+    github.authenticate({
+        type: "token",
+        token: token
+    });
+
+    // acquire the repository
+    github.repos.get({ owner: username, repo: repository}, function (error, data)
+    {
+        if (error)
+        {
+            response.write("<p>Failed to perform migration.  GitHub reported the following error: " + error + "</p>");
+            response.end();
+        }
+
+        // an array of initialization promises
+        // (these need to be complete before we can start creating issues)
+        var initialization = [];
+
+        response.write("<p>Adding collaborators to the project</p>")
+        initialization.push(
+            Promise.each(collaborators, function(collaborator) {
+                return createCollaborator(github, username, repository, collaborator);
+            }).then(function() {
+                response.write("<p>All Collaborators Created</p>");
+            }));
+
+        Promise.all(initialization).then(function() {
+                response.write("<p>Completed Collaborators Migration!</p>");
+                response.end();
+            });
+    });
+
+}
+
 exports.createIssue         = createIssue;
 exports.createIssueIfAbsent = createIssueIfAbsent;
 exports.createLabel         = createLabel;
@@ -428,5 +518,6 @@ exports.getIssue            = getIssue;
 exports.getMilestones       = getMilestones;
 
 exports.importJIRAProject   = importJIRAProject;
+exports.importCollaborators = importCollaborators;
 
 exports.USER_AGENT          = USER_AGENT;

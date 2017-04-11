@@ -13,6 +13,8 @@ var request         = require('request-promise');
 var retry           = require('bluebird-retry');
 var session         = require('express-session');
 var xmldoc          = require('xmldoc');
+var readline        = require('readline');
+var fs              = require('fs');
 
 // locally defined and provided modules
 var jiraGetProjectList      = require('./jim-jira').jiraGetProjectList;
@@ -20,6 +22,7 @@ var jiraExportIssuesAsXml   = require('./jim-jira').jiraExportIssuesAsXml;
 var jiraProcessXmlExport    = require('./jim-jira').jiraProcessXmlExport;
 
 var importJIRAProject       = require('./jim-github').importJIRAProject;
+var importCollaborators     = require('./jim-github').importCollaborators;
 
 var toString                = require('./jim-strings').toString;
 var splitID                 = require('./jim-strings').splitID;
@@ -53,6 +56,37 @@ app.get('/', function(req, res){
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Fill in this user name map from the file mapping.txt
+var username_map = {};
+
+var rl = readline.createInterface({
+    input: fs.createReadStream('mapping.txt')
+});
+
+rl.on('line', (line) => {
+    [javanet_id, gh_id] = line.split(" ");
+    username_map[javanet_id] = gh_id;
+});
+
+
+app.post('/collaborators', function(req, res) {
+
+    var repository      = req.body.repository;
+    var username        = req.body.username;
+    var token           = req.body.token;
+
+    var new_collaborators = new Set();
+
+    for (var key in username_map) {
+        new_collaborators.add(username_map[key]);
+    }
+
+    console.log("Importing collaborators");
+    console.log(username_map);
+
+    importCollaborators(repository, username, token, new_collaborators, res);
+});
 
 app.post('/migrate', function (req, res) {
 
@@ -128,7 +162,7 @@ app.post('/migrate', function (req, res) {
 
                     // process all of the xml exports
                     xmlDocuments.forEach(function (xmlDocument) {
-                        jiraProcessXmlExport(xmlDocument, project);
+                        jiraProcessXmlExport(xmlDocument, project, username_map);
                     });
                     
                     project.issues.sort(function(issueA, issueB) {

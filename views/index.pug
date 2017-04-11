@@ -40,3 +40,21 @@ html(lang="en")
         p/
 
         input(type="submit" value="Migrate")
+
+    form(method='post' action='/collaborators')
+        fieldset
+                Import Collaborators:
+
+                p
+                    label(for='repository') Repository Name (not URL):
+                        input(id='repository' type="text", name="repository")
+                p
+                    label(for="username") Repository Owner (username):
+                        input(id='username' type='text', name='username')
+                p
+                    label(for='token') GitHub API Token:
+                        input(id='token' type="text", name="token")
+
+        p/
+
+        input(type="submit" value="Import")
