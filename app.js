@@ -17,26 +17,14 @@ var readline        = require('readline');
 var fs              = require('fs');
 
 // locally defined and provided modules
-var childValuesFrom         = require('./jim-xml').childValuesFrom;
-
-var jiraDateFormat          = require('./jim-jira').jiraDateFormat;
-var jiraDateFrom            = require('./jim-jira').jiraDateFrom;
-var jiraDateToJavaScript    = require('./jim-jira').jiraDateToJavaScript;
-var jiraHtmlToMarkdown      = require('./jim-jira').jiraHtmlToMarkdown;
 var jiraGetProjectList      = require('./jim-jira').jiraGetProjectList;
+var jiraExportIssuesAsXml   = require('./jim-jira').jiraExportIssuesAsXml;
+var jiraProcessXmlExport    = require('./jim-jira').jiraProcessXmlExport;
+
+var importJIRAProject       = require('./jim-github').importJIRAProject;
 
 var toString                = require('./jim-strings').toString;
 var splitID                 = require('./jim-strings').splitID;
-
-var createIssueIfAbsent     = require('./jim-github').createIssueIfAbsent;
-var createLabel             = require('./jim-github').createLabel;
-var createMilestone         = require('./jim-github').createMilestone;
-var createCollaborator      = require('./jim-github').createCollaborator;
-var getCollaborators        = require('./jim-github').getCollaborators;
-var getIssue                = require('./jim-github').getIssue;
-var getMilestones           = require('./jim-github').getMilestones;
-
-var USER_AGENT              = require('./jim-github').USER_AGENT;
 
 // define our application
 var app = express();
@@ -144,395 +132,105 @@ app.post('/collaborators', function(req, res) {
 
 app.post('/migrate', function (req, res) {
 
-    var timeout = 60000;
-
     var session = req.session;
 
-    var project         = req.body.project;
+    var projectName         = req.body.project;
     var repository      = req.body.repository;
     var username        = req.body.username;
     var defaultusername = req.body.defaultusername;
     var token           = req.body.token;
 
-    var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=project+%3D+" + project + "&tempMax=1000";
+    // determine the number of issues in the project
+    var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=project+%3D+" + projectName + "&order+by+created+desc&tempMax=1";
 
-    console.log("Requested Migration of Project [" + project + "] from [" + url + "]");
+    console.log("Requested Migration of Project [" + projectName + "] from [" + url + "]");
 
-    res.write("<p>Retrieving Issues from java.net for <b>" + project + "</b>. Please wait.</p>");
+    res.write("<p>Analyzing java.net <b>" + projectName + "</b>. Please wait.</p>");
 
-    https.get(url, function(javanet) {
-        var xml = '';
+    // establish an initial JSON representation of the JIRA project, it's issues and migration information
+    var project = {};
+    project.repository = repository;
+    project.name = projectName;
+    project.username = username;
+    project.defaultusername = defaultusername;
+    project.token = token;
+    
+    project.versions = new Set();
+    project.components = new Set();
+    project.assignees = new Set();
+    project.types = new Set();
+    project.statuses = new Set();
+    project.resolutions = new Set();
+    project.priorities = new Set();
+    project.projects = new Set();     // references to other projects
+    project.issues = [];
 
-        javanet.on('data', function(chunk) {
-            xml += chunk;
-        });
-
-        javanet.on('error', function(e) {
-            console.log(e);
-
-            res.sendStatus(500);
-        });
-
-        javanet.on('timeout', function(e) {
-            console.log(e);
-
-            res.sendStatus(500);
-        });
-
-        javanet.on('end', function() {
-
-            res.write("<p>Retrieved Issues from java.net for <b>" + project + "</b></p>");
-
+    request(url)
+        .then(function (html) {
             //parse the xml
-            var xmlJiraExport = new xmldoc.XmlDocument(xml);
+            var xmlQuery = new xmldoc.XmlDocument(html);
 
-            var xmlChannel = xmlJiraExport.childNamed("channel");
+            var xmlChannel = xmlQuery.childNamed("channel");
+
+            // determine the total issues based on the range of issue numbers returned
+            var xmlIssueRange = xmlChannel.childNamed("issue");
+            project.totalIssues = xmlIssueRange.attr.total;
+
+            // determine the items
             var xmlItems = xmlChannel.childrenNamed("item");
 
-            // ----- analyse the issues to determine meta-information -----
+            if (xmlItems.length == 1 && project.totalIssues > 0) {
+                // determine the last known issue using the last issue key returned
+                var xmlItem = xmlItems[0];
 
-            res.write("<p>Analysing " + xmlItems.length + " JIRA Issues for Migration</p>");
+                res.write("<p>Detected " + project.totalIssues + " JIRA Issues to migrate, the last being issue " + project.name + "-" + project.lastIssueId + "</p>");
 
-            var versions = new Set();
-            var components = new Set();
-            var assignees = new Set();
-            var types = new Set();
-            var statuses = new Set();
-            var resolutions = new Set();
-            var priorities = new Set();
-            var projects = new Set();
+                // create promises to load each issue
+                var xmlDocuments = [];
 
-            xmlItems.forEach(function(xmlItem)
-            {
-                childValuesFrom(xmlItem, "project", projects);
-                childValuesFrom(xmlItem, "version", versions);
-                childValuesFrom(xmlItem, "fixVersion", versions);
-                childValuesFrom(xmlItem, "component", components);
-                childValuesFrom(xmlItem, "assignee", assignees);
-                childValuesFrom(xmlItem, "reporter", assignees);
-                childValuesFrom(xmlItem, "type", types);
-                childValuesFrom(xmlItem, "status", statuses);
-                childValuesFrom(xmlItem, "resolution", resolutions);
-                childValuesFrom(xmlItem, "priority", priorities);
-            });
+                console.log("Commencing retrieval of " + project.totalIssues + " issues");
 
-            // clean up assignees and types
-            assignees.delete("Unassigned");
-            types.delete("Epic");
+                console.time("Issue Export");
+                var promises = jiraExportIssuesAsXml(project.name, 1, project.lastIssueId, xmlDocuments);
 
-            res.write("<p>Discovered Projects: " + toString(projects) + "</p>");
-            res.write("<p>Discovered Versions: " + toString(versions) + "</p>");
-            res.write("<p>Discovered Components: " + toString(components) + "</p>");
-            res.write("<p>Discovered Assignees: " + toString(assignees) + "</p>");
-            res.write("<p>Discovered Types: " + toString(types) + "</p>");
-            res.write("<p>Discovered Statuses: " + toString(statuses) + "</p>");
-            res.write("<p>Discovered Resolutions: " + toString(resolutions) + "</p>");
-            res.write("<p>Discovered Priorities: " + toString(priorities) + "</p>");
+                promises.then(function () {
+                    console.timeEnd("Issue Export");
 
-            // ----- create a JSON representation of the issues -----
+                    console.log("Completed export of " + xmlDocuments.length + " issues");
 
-            // Note: this JSON representation is almost exactly as required
-            // for bulk import.  Some information is extraneous and will be removed
-            // from the JSON representation.  Some information is incomplete
-            // and will be corrected prior to creating the issues.
-
-            res.write("<p>Preparing " + xmlItems.length + " JIRA Issues for Github</p>");
-
-            var issues = [];
-
-            xmlItems.forEach(function(xmlItem)
-            {
-                var issue = {};
-
-                // determine the JIRA Project and Issue ID
-                var key = xmlItem.childNamed("key").val;
-                [issue.project, issue.id] = splitID(key);
-
-                issue.title = xmlItem.childNamed("summary").val;
-                issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
-                environment = jiraHtmlToMarkdown(xmlItem.childNamed("environment").val);
-                issue.body += "\n#### Environment\n" + environment;
-                issue.created_at = jiraDateFrom(xmlItem, "created");
-                issue.closed_at = jiraDateFrom(xmlItem, "resolved");
-
-                status = xmlItem.childNamed("status").val.toLowerCase()
-                issue.closed = (status == "closed" || status == "resolved") ? true : false;
-
-                // the fix version will eventually become the milestone
-                var xmlFixVersion = xmlItem.childNamed("fixVersion");
-                if (xmlFixVersion)
-                {
-                    issue.fixVersion = xmlFixVersion.val;
-                }
-
-                // establish the labels
-                issue.labels = [];
-
-                childValuesFrom(xmlItem, "type", issue.labels, "Type: ");
-                childValuesFrom(xmlItem, "priority", issue.labels, "Priority: ");
-                childValuesFrom(xmlItem, "component", issue.labels, "Component: ");
-                childValuesFrom(xmlItem.childNamed("labels") , "label", issue.labels)
-                // Custom field - Tags
-                var tagsNode = xmlItem.childNamed("customfields").childWithAttribute("id", "customfield_10002")
-                if(tagsNode) {
-                    childValuesFrom(tagsNode.childNamed("customfieldvalues") , "label", issue.labels)
-                }
-
-                // extract the assignee and reporter
-                issue.assignee = xmlItem.childNamed("assignee").attr.username;
-                issue.reporter = xmlItem.childNamed("reporter").attr.username;
-                if(issue.assignee in username_map)
-                    issue.assignee = username_map[issue.assignee]
-
-                if(issue.reporter in username_map)
-                    issue.reporter = username_map[issue.reporter]
-
-                // extract the resolution
-                if (xmlItem.childNamed("resolution")) {
-                    issue.resolution = xmlItem.childNamed("resolution").val;
-                }
-
-                // ----- extract the comments ------
-
-                var comments = [];
-
-                var xmlComments = xmlItem.childNamed("comments");
-
-                if (xmlComments)
-                {
-                    xmlComments = xmlComments.childrenNamed("comment");
-
-                    xmlComments.forEach(function(xmlComment) {
-                        var author = xmlComment.attr.author;
-                        if(author in username_map)
-                            author = username_map[author]
-                        var created = jiraDateToJavaScript(xmlComment.attr.created);
-                        var body = jiraHtmlToMarkdown(xmlComment.val, issue.project);
-
-                        comments.push({
-                            created_at: created,
-                            body: (author in username_map ? "@" : "") + author + " said:\n" + body
-                        });
+                    // process all of the xml exports
+                    xmlDocuments.forEach(function (xmlDocument) {
+                        jiraProcessXmlExport(xmlDocument, project);
                     });
-                }
-
-                // ----- extract all attachments and add as comments -----
-                // TODO: Change the url to the new location
-                var xmlAttachments = xmlItem.childNamed("attachments")
-
-                if(xmlAttachments) {
-
-                    xmlAttachments = xmlAttachments.childrenNamed("attachment");
-
-                    xmlAttachments.forEach(function(xmlAttachment) {
-                        var created = jiraDateToJavaScript(xmlAttachment.attr.created);
-                        var author = xmlAttachment.attr.author;
-                        if(author in username_map)
-                            author = username_map[author]
-                        var url = "https://java.net/jira/secure/attachment/" + xmlAttachment.attr.id  + "/" + xmlAttachment.attr.name;
-                        var body = "File: [" + xmlAttachment.attr.name + "](" + url + ")\n";
-                        body += "Attached By: " + (author in username_map ? "@" : "") + author + "\n";
-
-                        comments.push({
-                            created_at: created,
-                            body: body
-                        });
-                    })
-                }
-
-                tmp_project = ""
-                tmp_id = ""
-                // ----- extract all sub-tasks and add as comments -----
-                subtasks = [];
-                childValuesFrom(xmlItem.childNamed("subtasks"), "subtask", subtasks)
-                tmp_body = "Sub-Tasks:\n";
-                for (var i = 0; i < subtasks.length; i++) {
-                    [tmp_project, tmp_id] = splitID(subtasks[i]);
-                    tmp_url = "https://github.com/" + username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
-                    tmp_body += "[" + subtasks[i] + "](" + tmp_url + ")\n";
-                }
-                if(subtasks.length != 0) {
-                    comments.push({
-                        created_at: issue.created_at,
-                        body: tmp_body
+                    
+                    project.issues.sort(function(issueA, issueB) {
+                        return issueA.issue.id - issueB.issue.id;
                     });
-                }
 
-                // ----- extract the parent task and add as comment -----
-                var parent = xmlItem.childNamed("parent")
+                    console.log(project);
 
-                if(parent) {
-                    tmp_body = "Parent-Task: ";
-                    [tmp_project, tmp_id] = splitID(parent.val);
-                    tmp_url = "https://github.com/" + username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
-                    tmp_body += "[" + parent.val + "](" + tmp_url + ")\n";
-                    comments.push({
-                        created_at: issue.created_at,
-                        body: tmp_body
-                    });
-                }
+                    res.write("<p>Discovered Projects: " + toString(project.projects) + "</p>");
+                    res.write("<p>Discovered Versions: " + toString(project.versions) + "</p>");
+                    res.write("<p>Discovered Components: " + toString(project.components) + "</p>");
+                    res.write("<p>Discovered Assignees: " + toString(project.assignees) + "</p>");
+                    res.write("<p>Discovered Types: " + toString(project.types) + "</p>");
+                    res.write("<p>Discovered Statuses: " + toString(project.statuses) + "</p>");
+                    res.write("<p>Discovered Resolutions: " + toString(project.resolutions) + "</p>");
+                    res.write("<p>Discovered Priorities: " + toString(project.priorities) + "</p>");
 
-                // ----- extract all issue-links and add as comments -----
-                var xmlLinks = xmlItem.childNamed("issuelinks")
-                tmp_body = "Issue-Links:\n"
-                if(xmlLinks) {
-                    xmlLinks = xmlLinks.childrenNamed("issuelinktype");
-                    if(xmlLinks) {
-                        xmlLinks.forEach(function(xmlLink) {
-                            var outwardLinks = xmlLink.childNamed("outwardlinks");
-                            var inwardLinks = xmlLink.childNamed("inwardlinks");
-                            if(outwardLinks) {
-                                tmp_body += outwardLinks.attr.description + "\n";
-                                outwardLinks.childrenNamed('issuelink').forEach(function(issuelink){
-                                    tmp_key = issuelink.valueWithPath('issuekey');
-                                    [tmp_project, tmp_id] = splitID(tmp_key);
-                                    tmp_url = "https://github.com/" + username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
-                                    tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
-                                });
-                            }
-                            if(inwardLinks) {
-                                tmp_body += inwardLinks.attr.description + "\n";
-                                inwardLinks.childrenNamed('issuelink').forEach(function(issuelink){
-                                    tmp_key = issuelink.valueWithPath('issuekey');
-                                    [tmp_project, tmp_id] = splitID(tmp_key);
-                                    tmp_url = "https://github.com/" + username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
-                                    tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
-                                });
-                            }
-                        })
-                        comments.push({
-                            created_at: issue.created_at,
-                            body: tmp_body
-                        });
-                    }
-                }
+                    // perform the migration
+                    importJIRAProject(project, res);
+                });
 
-                issues.push({"issue": issue, "comments": comments});
-            });
+            } else {
+                res.write("<p>No items to migrate</p>");
+            }
+        })
+        .catch(function (html) {
+            console.log(html);
 
-            res.write("<p>Sorting " + xmlItems.length + " JIRA Issues (by key) for creation on Github</p>");
-
-            issues.sort(function(issueA, issueB) {
-                return issueA.issue.id - issueB.issue.id;
-            });
-
-            res.write("<p>Creating " + xmlItems.length + " JIRA Issues on Github</p>");
-
-            // ----- connect and authenticate to github -----
-
-            res.write("<p>Connecting to Github Repository <b>" + repository +
-                      "</b> on behalf of <b>" + username +
-                      "</b> using token <b>" + token + "</b></p>");
-
-            var github = new GitHub({
-                // required
-                version: "3.0.0",
-                // optional
-                debug: false,
-                protocol: "https",
-                host: "api.github.com",
-                timeout: timeout,
-                headers: {
-                    "user-agent": USER_AGENT
-                }
-            });
-
-            github.authenticate({
-                type: "token",
-                token: token
-            });
-
-            // acquire the repository
-            github.repos.get({ owner: username, repo: repository}, function (error, data)
-            {
-                if (error)
-                {
-                    res.write("<p>Failed to perform migration.  GitHub reported the following error: " + error + "</p>");
-                    res.end();
-                }
-                else
-                {
-                    res.write("<p>Connected to Github.  Commencing Issue Creation.</p>");
-
-                    // the milestones and collaborators known to github for the project
-                    var milestones    = {};
-                    var collaborators = {};
-
-                    // an array of initialization promises
-                    // (these need to be complete before we can start creating issues)
-                    var initialization = [];
-
-                    // ----- create the versions as milestones -----
-
-                    res.write("<p>Creating JIRA Versions as GitHub Milestones.</p>");
-
-                    initialization.push(
-                        Promise.each(versions, function(version) {
-                            return createMilestone(github, username, repository, version);
-                        }).then(function() {
-                            res.write("<p>All Versions Created</p>");
-                        }));
-
-                    // ----- create the components as labels -----
-
-                    res.write("<p>Creating JIRA Components as GitHub Labels</p>");
-
-                    initialization.push(
-                        Promise.each(components, function(component) {
-                            return createLabel(github, username, repository, "Component: " + component);
-                        }).then(function() {
-                            res.write("<p>All Components Created</p>");
-                        }));
-
-                    // ----- create the types as labels -----
-
-                    res.write("<p>Creating JIRA Issue Types as GitHub Labels</p>");
-
-                    initialization.push(
-                        Promise.each(types, function(type) {
-                            return createLabel(github, username, repository, "Type: " + type);
-                        }).then(function() {
-                            res.write("<p>All Issue Types Created</p>");
-                        }));
-
-                    // ----- create the priorities as labels -----
-
-                    res.write("<p>Creating JIRA Priorities as GitHub Labels</p>");
-
-                    initialization.push(
-                        Promise.each(priorities, function(priority) {
-                            return createLabel(github, username, repository, "Priority: " + priority);
-                        }).then(function() {
-                            res.write("<p>All Priorities Created</p>");
-                        }));
-
-                    // acquire the known collaborators
-                    initialization.push(getCollaborators(github, username, repository, collaborators));
-
-                    Promise.all(initialization).then(function() {
-
-                        return getMilestones(github, username, repository, milestones);
-
-                    }).then(function() {
-                        console.log("Creating GitHub Issues for JIRA Issues");
-
-                        // create the issues
-                        return Promise.each(issues, function(issue) {
-                            return createIssueIfAbsent(github, username, token, repository, issue.issue, issue.comments, milestones, collaborators, timeout, res, defaultusername);
-                        });
-
-                    }).then(function () {
-
-                        res.write("<p>Completed Issue Migration!</p>");
-
-                        // we're now done
-                        res.end();
-                    });
-                }
-            });
+            res.sendStatus(500);
         });
-    });
-
 });
 
 // catch 404 and forward to error handler
