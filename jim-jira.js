@@ -22,33 +22,33 @@ var jiraDateFormat = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
  * Asynchronously fetches JIRA issues for a known project in the specified issue
  * range, updating the JSON-based project.
  * 
- * @param project     the project
- * @param firstIssue  the first issue to fetch
- * @param lastIssue   the last issue to fetch (inclusive)
+ * @param project       the project
+ * @param firstIssueId  the first issue to fetch
+ * @param lastIssueId   the last issue to fetch (inclusive)
  */
-function jiraFetchIssues(project, firstIssue, lastIssue) {
+function jiraFetchIssues(project, firstIssueId, lastIssueId) {
 
     // create an array of starting issue numbers so we can batch concurrent requests to JIRA
     var batchSize = 50;
-    var startingIssues = [];
+    var startingIssueIds = [];
 
-    for (var i = firstIssue; i <= lastIssue; i = i + batchSize) {
-        startingIssues.push(i);
+    for (var issueId = firstIssueId; issueId <= lastIssueId; issueId = issueId + batchSize) {
+        startingIssueIds.push(issueId);
     }
 
     return Promise.each(
-        startingIssues,
-        function (startingIssue) {
+        startingIssueIds,
+        function (startingIssueId) {
 
             // create an array of issues to concurrently request from JIRA
             var issues = [];
-            for (var i = startingIssue; i < startingIssue + batchSize && i <= lastIssue; i++) {
-                issues.push(i);
+            for (var issueId = startingIssueId; issueId < startingIssueId + batchSize && issueId <= lastIssueId; issueId++) {
+                issues.push(issueId);
             }
 
-            return Promise.map(issues,  function (issue) {
+            return Promise.map(issues,  function (issueId) {
                 // create a JQL query to request the required issue
-                var jql = "PROJECT+%3D+" + project.name + "+AND+ISSUE=" + project.name + "-" + issue;
+                var jql = "PROJECT+%3D+" + project.name + "+AND+ISSUE=" + project.name + "-" + issueId;
 
                 // create a URL for an xml based JQL query
                 var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=" + jql;
@@ -56,20 +56,52 @@ function jiraFetchIssues(project, firstIssue, lastIssue) {
                 // create a promise that can concurrently request the issue from JIRA
                 return request(url)
                     .then(function (xml) {
-                        console.log("Retrieved Issue " + project.name + "-" + issue);
+                        console.log("Retrieved Issue " + project.name + "-" + issueId);
 
                         // update the project model by processing the fetched xml
-                        jiraProcessXmlExport(xml, project, issue)
+                        jiraProcessXmlExport(xml, project, issueId)
                     })
                     .catch(function (err) {
-                        console.log("Oops! Failed to load issue " + project.name + "-" + issue + " due to " + err);
+                        console.log("Oops! Failed to load issue " + project.name + "-" + issueId + " due to: " + err);
 
-                        // TODO: create a place-holder issue as we assume the issue is not available
+                        // create an empty issue for the missing / error issue id
+                        createUnavailableIssue(project, issueId);
                     });
             });
         }
     );
 }
+
+/**
+ * Creates an un-used and unavailable issue in the project with the specified issue id
+ *
+ * @param project
+ * @param issueId
+ */
+function createUnavailableIssue(project, issueId)
+{
+    var issue = {};
+
+    issue.project = project.name;
+    issue.id      = issueId;
+    issue.title   = "Unavailable";
+    issue.body    = "This issue was unavailable for migration from original issue tracker.";
+
+    issue.created_at = moment().format();
+    issue.closed_at  = issue.created_at;
+
+    issue.closed = true;
+
+    issue.labels = [];
+
+    issue.assignee = "";
+    issue.reporter = "";
+
+    var comments = [];
+
+    project.issues.push({"issue": issue, "comments": comments});
+}
+
 
 /**
  * Processes the Xml-based JIRA export, updating the JSON-based project
@@ -162,7 +194,7 @@ function jiraProcessXmlExport(xml, project) {
             issue.assignee = xmlItem.childNamed("assignee").attr.username;
             // Unassigned
             if (xmlItem.childNamed("assignee").val == "Unassigned")
-                issue.assignee = ""
+                issue.assignee = "";
             issue.reporter = xmlItem.childNamed("reporter").attr.username;
             if (issue.assignee in project.username_map)
                 issue.assignee = project.username_map[issue.assignee];
@@ -199,8 +231,9 @@ function jiraProcessXmlExport(xml, project) {
             }
 
             // ----- extract all attachments and add as comments -----
+            
             // TODO: Change the url to the new location
-            var xmlAttachments = xmlItem.childNamed("attachments")
+            var xmlAttachments = xmlItem.childNamed("attachments");
 
             if (xmlAttachments) {
 
@@ -222,12 +255,12 @@ function jiraProcessXmlExport(xml, project) {
                 })
             }
 
-            tmp_project = ""
-            tmp_id = ""
+            tmp_project = "";
+            tmp_id = "";
 
             // ----- extract all sub-tasks and add as comments -----
             subtasks = [];
-            childValuesFrom(xmlItem.childNamed("subtasks"), "subtask", subtasks)
+            childValuesFrom(xmlItem.childNamed("subtasks"), "subtask", subtasks);
             tmp_body = "Sub-Tasks:\n";
             for (var i = 0; i < subtasks.length; i++) {
                 [tmp_project, tmp_id] = splitID(subtasks[i]);
@@ -242,7 +275,7 @@ function jiraProcessXmlExport(xml, project) {
             }
 
             // ----- extract the parent task and add as comment -----
-            var parent = xmlItem.childNamed("parent")
+            var parent = xmlItem.childNamed("parent");
 
             if (parent) {
                 tmp_body = "Parent-Task: ";
@@ -256,8 +289,8 @@ function jiraProcessXmlExport(xml, project) {
             }
 
             // ----- extract all issue-links and add as comments -----
-            var xmlLinks = xmlItem.childNamed("issuelinks")
-            tmp_body = "Issue-Links:\n"
+            var xmlLinks = xmlItem.childNamed("issuelinks");
+            tmp_body = "Issue-Links:\n";
             if (xmlLinks) {
                 xmlLinks = xmlLinks.childrenNamed("issuelinktype");
                 if (xmlLinks) {
@@ -282,7 +315,8 @@ function jiraProcessXmlExport(xml, project) {
                                 tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
                             });
                         }
-                    })
+                    });
+                    
                     comments.push({
                         created_at: issue.created_at,
                         body: tmp_body
