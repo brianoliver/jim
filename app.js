@@ -3,23 +3,25 @@ var bodyParser      = require('body-parser');
 var cookieParser    = require('cookie-parser');
 var express         = require('express');
 var favicon         = require('serve-favicon');
-var GitHub          = require("github");
+var fileExists      = require('file-exists-promise');
 var https           = require('https');
+var lineReader      = require('line-reader');
 var logger          = require('morgan');
 var moment          = require('moment');
 var path            = require('path');
 var Promise         = require("bluebird");
+var readline        = require('readline');
 var request         = require('request-promise');
 var retry           = require('bluebird-retry');
 var session         = require('express-session');
 var xmldoc          = require('xmldoc');
-var readline        = require('readline');
-var fs              = require('fs');
+
+// promisify modules and methods
+var eachLine = Promise.promisify(lineReader.eachLine);
 
 // locally defined and provided modules
 var jiraGetProjectList      = require('./jim-jira').jiraGetProjectList;
-var jiraExportIssuesAsXml   = require('./jim-jira').jiraExportIssuesAsXml;
-var jiraProcessXmlExport    = require('./jim-jira').jiraProcessXmlExport;
+var jiraFetchIssues         = require('./jim-jira').jiraFetchIssues;
 
 var importJIRAProject       = require('./jim-github').importJIRAProject;
 var importCollaborators     = require('./jim-github').importCollaborators;
@@ -57,19 +59,6 @@ app.get('/', function(req, res){
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Fill in this user name map from the file mapping.txt
-var username_map = {};
-
-var rl = readline.createInterface({
-    input: fs.createReadStream('mapping.txt')
-});
-
-rl.on('line', (line) => {
-    [javanet_id, gh_id] = line.split(" ");
-    username_map[javanet_id] = gh_id;
-});
-
-
 app.post('/collaborators', function(req, res) {
 
     var repository      = req.body.repository;
@@ -90,21 +79,12 @@ app.post('/collaborators', function(req, res) {
 
 app.post('/migrate', function (req, res) {
 
-    var session = req.session;
-
-    var projectName         = req.body.project;
+    var projectName     = req.body.project;
     var repository      = req.body.repository;
     var username        = req.body.username;
     var defaultusername = req.body.defaultusername;
     var token           = req.body.token;
-
-    // determine the number of issues in the project
-    var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=project+%3D+" + projectName + "&order+by+created+desc&tempMax=1";
-
-    console.log("Requested Migration of Project [" + projectName + "] from [" + url + "]");
-
-    res.write("<p>Analyzing java.net <b>" + projectName + "</b>. Please wait.</p>");
-
+    
     // establish an initial JSON representation of the JIRA project, it's issues and migration information
     var project = {};
     project.repository = repository;
@@ -123,10 +103,37 @@ app.post('/migrate', function (req, res) {
     project.projects = new Set();     // references to other projects
     project.issues = [];
 
-    request(url)
-        .then(function (html) {
+    // attempt to load the username mappings (if defined)
+    project.username_map = {};
+
+    var mappingsFile = path.resolve(__dirname, './mapping.txt');
+
+    fileExists(mappingsFile)
+        .then(function (status) {
+            console.log("Loading custom username mapping.txt file");
+
+            return eachLine(mappingsFile, function (line) {
+                [javanet_id, gh_id] = line.split(" ");
+                project.username_map[javanet_id] = gh_id;
+            });
+        })
+        .catch(function () {
+            console.log("Custom Username mapping.txt file does not exist.  Ignoring for now.");
+        })
+        .then(function () {
+            // determine the number of issues in the project
+            var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=project+%3D+" + projectName + "&order+by+created+desc&tempMax=1";
+
+            console.log("Requested Migration of Project [" + projectName + "] from [" + url + "]");
+
+            res.write("<p>Analyzing java.net <b>" + projectName + "</b>. Please wait.</p>");
+
+            // attempt the import
+            return request(url);
+        })
+        .then(function (xml) {
             //parse the xml
-            var xmlQuery = new xmldoc.XmlDocument(html);
+            var xmlQuery = new xmldoc.XmlDocument(xml);
 
             var xmlChannel = xmlQuery.childNamed("channel");
 
@@ -153,18 +160,18 @@ app.post('/migrate', function (req, res) {
                 console.log("Commencing retrieval of " + project.totalIssues + " issues");
 
                 console.time("Issue Export");
-                var promises = jiraExportIssuesAsXml(project.name, 1, project.lastIssueId, xmlDocuments);
+
+                var firstIssue = 1;
+                var lastIssue = project.lastIssueId;
+
+                var promises = jiraFetchIssues(project, firstIssue, lastIssue);
 
                 promises.then(function () {
                     console.timeEnd("Issue Export");
 
                     console.log("Completed export of " + xmlDocuments.length + " issues");
 
-                    // process all of the xml exports
-                    xmlDocuments.forEach(function (xmlDocument) {
-                        jiraProcessXmlExport(xmlDocument, project, username_map);
-                    });
-                    
+                    // sort the issues
                     project.issues.sort(function(issueA, issueB) {
                         return issueA.issue.id - issueB.issue.id;
                     });
@@ -188,8 +195,8 @@ app.post('/migrate', function (req, res) {
                 res.write("<p>No items to migrate</p>");
             }
         })
-        .catch(function (html) {
-            console.log(html);
+        .catch(function (xml) {
+            console.log(xml);
 
             res.sendStatus(500);
         });
