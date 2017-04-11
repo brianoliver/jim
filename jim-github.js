@@ -150,9 +150,9 @@ function createIssue(github, username, token, repository, issue, comments, miles
         }
 
         // ensure the assignee is a known collaborator
-        if (issue.assignee && (!(issue.assignee in collaborators) || issue.assignee.toLowerCase() == "unassigned")) {
+        if (!(issue.assignee in collaborators)) {
             // Add a comment storing the old assignee who is not a collaborator
-            if (issue.assignee && issue.assignee.toLowerCase() != "unassigned") {
+            if (issue.assignee) {
                 comments.push({
                     created_at: issue.created_at,
                     body: "Was assigned to " + issue.assignee
@@ -448,16 +448,76 @@ function importJIRAProject(project, response) {
     });
 }
 
+/**
+ * Create collaborators for the project
+ */
+function importCollaborators(repository, username, token, collaborators, response) {
+
+    var timeout = 120000;
+
+    // ----- connect and authenticate to github -----
+
+    response.write("<p>Connecting to Github Repository <b>" + repository +
+                   "</b> on behalf of <b>" + username +
+                   "</b> using token <b>" + token + "</b></p>");
+
+    var github = new GitHub({
+        // required
+        version: "3.0.0",
+        // optional
+        debug: false,
+        protocol: "https",
+        host: "api.github.com",
+        timeout: timeout,
+        headers: {
+            "user-agent": USER_AGENT
+        }
+    });
+
+    github.authenticate({
+        type: "token",
+        token: token
+    });
+
+    // acquire the repository
+    github.repos.get({ owner: username, repo: repository}, function (error, data)
+    {
+        if (error)
+        {
+            response.write("<p>Failed to perform migration.  GitHub reported the following error: " + error + "</p>");
+            response.end();
+        }
+
+        // an array of initialization promises
+        // (these need to be complete before we can start creating issues)
+        var initialization = [];
+
+        response.write("<p>Adding collaborators to the project</p>")
+        initialization.push(
+            Promise.each(collaborators, function(collaborator) {
+                return createCollaborator(github, username, repository, collaborator);
+            }).then(function() {
+                response.write("<p>All Collaborators Created</p>");
+            }));
+
+        Promise.all(initialization).then(function() {
+                response.write("<p>Completed Collaborators Migration!</p>");
+                response.end();
+            });
+    });
+
+}
+
 exports.createIssue         = createIssue;
 exports.createIssueIfAbsent = createIssueIfAbsent;
 exports.createLabel         = createLabel;
 exports.createMilestone     = createMilestone;
-exports.createCollaborator  = createCollaborator;
 
 exports.getCollaborators    = getCollaborators;
 exports.getIssue            = getIssue;
 exports.getMilestones       = getMilestones;
 
 exports.importJIRAProject   = importJIRAProject;
+exports.importCollaborators = importCollaborators;
 
 exports.USER_AGENT          = USER_AGENT;

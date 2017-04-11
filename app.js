@@ -22,6 +22,7 @@ var jiraExportIssuesAsXml   = require('./jim-jira').jiraExportIssuesAsXml;
 var jiraProcessXmlExport    = require('./jim-jira').jiraProcessXmlExport;
 
 var importJIRAProject       = require('./jim-github').importJIRAProject;
+var importCollaborators     = require('./jim-github').importCollaborators;
 
 var toString                = require('./jim-strings').toString;
 var splitID                 = require('./jim-strings').splitID;
@@ -68,8 +69,8 @@ rl.on('line', (line) => {
     username_map[javanet_id] = gh_id;
 });
 
+
 app.post('/collaborators', function(req, res) {
-    var timeout = 60000;
 
     var repository      = req.body.repository;
     var username        = req.body.username;
@@ -78,56 +79,13 @@ app.post('/collaborators', function(req, res) {
     var new_collaborators = new Set();
 
     for (var key in username_map) {
-        new_collaborators.add(username_map[key])
+        new_collaborators.add(username_map[key]);
     }
 
-    console.log("Importing collaborators")
+    console.log("Importing collaborators");
+    console.log(username_map);
 
-    var github = new GitHub({
-        // required
-        version: "3.0.0",
-        // optional
-        debug: false,
-        protocol: "https",
-        host: "api.github.com",
-        timeout: timeout,
-        headers: {
-            "user-agent": USER_AGENT
-        }
-    });
-
-    github.authenticate({
-        type: "token",
-        token: token
-    });
-
-    // acquire the repository
-    github.repos.get({ owner: username, repo: repository}, function (error, data)
-    {
-        if (error)
-        {
-            res.write("<p>Failed to perform migration.  GitHub reported the following error: " + error + "</p>");
-            res.end();
-        }
-
-        // an array of initialization promises
-        // (these need to be complete before we can start creating issues)
-        var initialization = [];
-
-        res.write("<p>Adding collaborators to the project</p>")
-        initialization.push(
-            Promise.each(new_collaborators, function(collaborator) {
-                return createCollaborator(github, username, repository, collaborator);
-            }).then(function() {
-                res.write("<p>All Collaborators Created</p>");
-            }));
-
-        Promise.all(initialization).then(function() {
-                res.write("<p>Completed Collaborators Migration!</p>");
-                res.end();
-            });
-    });
-
+    importCollaborators(repository, username, token, new_collaborators, res);
 });
 
 app.post('/migrate', function (req, res) {
@@ -183,6 +141,10 @@ app.post('/migrate', function (req, res) {
                 // determine the last known issue using the last issue key returned
                 var xmlItem = xmlItems[0];
 
+                var key = xmlItem.childNamed("key").val;
+
+                [project.name, project.lastIssueId] = splitID(key);
+
                 res.write("<p>Detected " + project.totalIssues + " JIRA Issues to migrate, the last being issue " + project.name + "-" + project.lastIssueId + "</p>");
 
                 // create promises to load each issue
@@ -200,7 +162,7 @@ app.post('/migrate', function (req, res) {
 
                     // process all of the xml exports
                     xmlDocuments.forEach(function (xmlDocument) {
-                        jiraProcessXmlExport(xmlDocument, project);
+                        jiraProcessXmlExport(xmlDocument, project, username_map);
                     });
                     
                     project.issues.sort(function(issueA, issueB) {
