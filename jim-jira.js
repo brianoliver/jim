@@ -17,6 +17,8 @@ var splitID         = require('./jim-strings').splitID;
 
 // constants
 var jiraDateFormat = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
+// The actual constraint is 1048576 bytes on the complete request. This restriction will not exactly guarantee that
+var MAX_BODY_LENGTH = 1000000;
 
 /**
  * Asynchronously fetches JIRA issues for a known project in the specified issue
@@ -159,7 +161,6 @@ function jiraProcessXmlExport(xml, project) {
             [issue.project, issue.id] = splitID(key);
 
             issue.title = xmlItem.childNamed("summary").val;
-            issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
             if (xmlItem.childNamed("environment").val != "") {
                 environment = jiraHtmlToMarkdown(xmlItem.childNamed("environment").val);
                 issue.body += "\n#### Environment\n" + environment;
@@ -178,6 +179,12 @@ function jiraProcessXmlExport(xml, project) {
 
             // establish the labels
             issue.labels = [];
+
+            issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
+            if (issue.body.length >= MAX_BODY_LENGTH) {
+                issue.labels.push("ERR: Length");
+                issue.body = "Comment too long. Unable to import";
+            }
 
             childValuesFrom(xmlItem, "type", issue.labels, "Type: ");
             childValuesFrom(xmlItem, "priority", issue.labels, "Priority: ");
@@ -222,6 +229,10 @@ function jiraProcessXmlExport(xml, project) {
                         author = "@" + project.username_map[author];
                     var created = jiraDateToJavaScript(xmlComment.attr.created);
                     var body = jiraHtmlToMarkdown(xmlComment.val, issue.project);
+                    if (body.length >= MAX_BODY_LENGTH) {
+                        issue.labels.push("ERR: Length");
+                        body = "Comment too long. Unable to import.";
+                    }
 
                     comments.push({
                         created_at: created,
