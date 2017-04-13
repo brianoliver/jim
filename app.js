@@ -59,6 +59,8 @@ app.get('/', function(req, res){
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+var mappingsFile = path.resolve(__dirname, './mapping.txt');
+
 app.post('/collaborators', function(req, res) {
 
     var repository      = req.body.repository;
@@ -67,14 +69,22 @@ app.post('/collaborators', function(req, res) {
 
     var new_collaborators = new Set();
 
-    for (var key in username_map) {
-        new_collaborators.add(username_map[key]);
-    }
+    fileExists(mappingsFile)
+        .then(function (status) {
+            console.log("Loading custom username mapping.txt file");
 
-    console.log("Importing collaborators");
-    console.log(username_map);
-
-    importCollaborators(repository, username, token, new_collaborators, res);
+            return eachLine(mappingsFile, function (line) {
+                [javanet_id, gh_id] = line.split(" ");
+                new_collaborators.add(gh_id);
+            });
+        })
+        .then(function() {
+            console.log("Importing collaborators");
+            importCollaborators(repository, username, token, new_collaborators, res);
+        })
+        .catch(function () {
+            console.log("Custom Username mapping.txt file does not exist.  Ignoring for now.");
+        })
 });
 
 app.post('/migrate', function (req, res) {
@@ -106,7 +116,6 @@ app.post('/migrate', function (req, res) {
     // attempt to load the username mappings (if defined)
     project.username_map = {};
 
-    var mappingsFile = path.resolve(__dirname, './mapping.txt');
 
     fileExists(mappingsFile)
         .then(function (status) {
