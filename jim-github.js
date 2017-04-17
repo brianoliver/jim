@@ -12,6 +12,7 @@ var retry       = require('bluebird-retry');
 
 // constants
 var USER_AGENT = 'JIM: brian.oliver@oracle.com';
+var REQUEST_DELAY = 500;  // half a second
 
 /**
  * Creates a GitHub Milestone.
@@ -385,7 +386,7 @@ function importJIRAProject(project, response) {
 
             initialization.push(
                 Promise.each(project.versions, function(version) {
-                    return createMilestone(github, project.username, project.repository, version);
+                    return Promise.delay(REQUEST_DELAY, createMilestone(github, project.username, project.repository, version));
                 }).then(function() {
                     response.write("<p>All Versions Created</p>");
                 }));
@@ -396,7 +397,7 @@ function importJIRAProject(project, response) {
 
             initialization.push(
                 Promise.each(project.components, function(component) {
-                    return createLabel(github, project.username, project.repository, "Component: " +  component);
+                    return Promise.delay(REQUEST_DELAY, createLabel(github, project.username, project.repository, "Component: " +  component));
                 }).then(function() {
                     response.write("<p>All Components Created</p>");
                 }));
@@ -407,7 +408,7 @@ function importJIRAProject(project, response) {
 
             initialization.push(
                 Promise.each(project.types, function(type) {
-                    return createLabel(github, project.username, project.repository, "Type: " + type);
+                    return Promise.delay(REQUEST_DELAY, createLabel(github, project.username, project.repository, "Type: " + type));
                 }).then(function() {
                     response.write("<p>All Issue Types Created</p>");
                 }));
@@ -418,7 +419,7 @@ function importJIRAProject(project, response) {
 
             initialization.push(
                 Promise.each(project.priorities, function(priority) {
-                    return createLabel(github, project.username, project.repository, "Priority: " + priority);
+                    return Promise.delay(REQUEST_DELAY, createLabel(github, project.username, project.repository, "Priority: " + priority));
                 }).then(function() {
                     response.write("<p>All Priorities Created</p>");
                 }));
@@ -435,7 +436,7 @@ function importJIRAProject(project, response) {
 
                 // create the issues
                 return Promise.each(project.issues, function(issue) {
-                    return createIssueIfAbsent(github, project.username, project.token, project.repository, issue.issue, issue.comments, milestones, collaborators, timeout, response, project.defaultusername);
+                    return Promise.delay(REQUEST_DELAY, createIssueIfAbsent(github, project.username, project.token, project.repository, issue.issue, issue.comments, milestones, collaborators, timeout, response, project.defaultusername));
                 });
 
             }).then(function () {
@@ -496,7 +497,7 @@ function importCollaborators(repository, username, token, collaborators, respons
         response.write("<p>Adding collaborators to the project</p>")
         initialization.push(
             Promise.each(collaborators, function(collaborator) {
-                return createCollaborator(github, username, repository, collaborator);
+                return Promise.delay(REQUEST_DELAY, createCollaborator(github, username, repository, collaborator));
             }).then(function() {
                 response.write("<p>All Collaborators Created</p>");
             }));
