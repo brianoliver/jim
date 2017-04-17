@@ -17,8 +17,9 @@ var splitID         = require('./jim-strings').splitID;
 
 // constants
 var jiraDateFormat = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
-// The actual constraint is 1048576 bytes on the complete request. This restriction will not exactly guarantee that
-var MAX_BODY_LENGTH = 1000000;
+// The actual constraint is 1048576 bytes on the complete request
+// We are assuming that the below restriction will guarantee that
+var MAX_BODY_LENGTH = 100000;
 
 /**
  * Asynchronously fetches JIRA issues for a known project in the specified issue
@@ -183,7 +184,7 @@ function jiraProcessXmlExport(xml, project) {
             issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
             if (issue.body.length >= MAX_BODY_LENGTH) {
                 issue.labels.push("ERR: Length");
-                issue.body = "Comment too long. Unable to import";
+                issue.body = "#### Comment too long. Imported partially\n" + issue.body.substring(0, MAX_BODY_LENGTH);
             }
 
             childValuesFrom(xmlItem, "type", issue.labels, "Type: ");
@@ -231,7 +232,7 @@ function jiraProcessXmlExport(xml, project) {
                     var body = jiraHtmlToMarkdown(xmlComment.val, issue.project);
                     if (body.length >= MAX_BODY_LENGTH) {
                         issue.labels.push("ERR: Length");
-                        body = "Comment too long. Unable to import.";
+                        issue.body = "#### Comment too long. Imported partially\n" + issue.body.substring(0, MAX_BODY_LENGTH);
                     }
 
                     comments.push({
