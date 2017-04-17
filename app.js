@@ -139,11 +139,11 @@ app.post('/migrate', function (req, res) {
             console.log("Custom Username mapping.txt file does not exist.  Ignoring for now.");
         })
         .then(function () {
-            return jsonRead(jsonReadFile)
-                .then(function(data) {
-                    console.log("JSON Data read from " + jsonReadFile);
-                    project = data;
-                })
+            return jsonRead(jsonReadFile);
+        })
+        .then(function(data) {
+            console.log("JSON Data read from " + jsonReadFile);
+            project = data;
         })
         .catch(function () {
             // determine the number of issues in the project
@@ -197,12 +197,10 @@ app.post('/migrate', function (req, res) {
                                     })
                             })
                     }
+                    else {
+                        res.write("<p>No items to migrate</p>");
+                    }
                 })
-                .catch(function (xml) {
-                    console.log(xml);
-
-                    res.sendStatus(500);
-                });
         })
         .then(function () {
             // sort the issues
@@ -235,6 +233,7 @@ app.post('/migrate', function (req, res) {
         })
         .catch(function(err) {
             console.log(err);
+            res.sendStatus(500);
         })
 });
 
