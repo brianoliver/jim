@@ -98,7 +98,6 @@ app.post('/migrate', function (req, res) {
     var username        = req.body.username;
     var defaultusername = req.body.defaultusername;
     var token           = req.body.token;
-    // var jsondump        = req.body.jsondumpfile;
     
     // establish an initial JSON representation of the JIRA project, it's issues and migration information
     var project = {};
@@ -124,7 +123,6 @@ app.post('/migrate', function (req, res) {
     var mappingsFile = path.resolve(__dirname, './mapping.txt');
     var jsonDumpFile = path.resolve(__dirname, './json/' + project.name + '.json');
     var jsonReadFile = jsonDumpFile;
-    var jsondata;
 
     fileExists(mappingsFile)
         .then(function (status) {
@@ -188,6 +186,15 @@ app.post('/migrate', function (req, res) {
 
                         return jiraFetchIssues(project, firstIssue, lastIssue)
                             .then(function () {
+                                project.projects = Array.from(project.projects);
+                                project.versions = Array.from(project.versions);
+                                project.components = Array.from(project.components);
+                                project.assignees = Array.from(project.assignees);
+                                project.types = Array.from(project.types);
+                                project.statuses = Array.from(project.statuses);
+                                project.resolutions = Array.from(project.resolutions);
+                                project.priorities = Array.from(project.priorities);
+
                                 jsonWrite(jsonDumpFile, project)
                                     .then(function() {
                                         console.log("JSON data dumped");
@@ -210,15 +217,6 @@ app.post('/migrate', function (req, res) {
 
             console.log(project);
 
-            project.projects = Array.from(project.projects);
-            project.versions = Array.from(project.versions);
-            project.components = Array.from(project.components);
-            project.assignees = Array.from(project.assignees);
-            project.types = Array.from(project.types);
-            project.statuses = Array.from(project.statuses);
-            project.resolutions = Array.from(project.resolutions);
-            project.priorities = Array.from(project.priorities);
-
             res.write("<p>Discovered Projects: " + toString(project.projects) + "</p>");
             res.write("<p>Discovered Versions: " + toString(project.versions) + "</p>");
             res.write("<p>Discovered Components: " + toString(project.components) + "</p>");
@@ -234,7 +232,7 @@ app.post('/migrate', function (req, res) {
         .catch(function(err) {
             console.log(err);
             res.sendStatus(500);
-        })
+        });
 });
 
 // catch 404 and forward to error handler
