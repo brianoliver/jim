@@ -14,9 +14,13 @@ var xmldoc     = require('xmldoc');
 // locally defined modules
 var childValuesFrom = require('./jim-xml').childValuesFrom;
 var splitID         = require('./jim-strings').splitID;
+var toString        = require('./jim-strings').toString;
 
 // constants
 var jiraDateFormat = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
+// The actual constraint is 1048576 bytes on the complete request
+// We are assuming that the below restriction will guarantee that
+var MAX_BODY_LENGTH = 100000;
 
 /**
  * Asynchronously fetches JIRA issues for a known project in the specified issue
@@ -164,6 +168,11 @@ function jiraProcessXmlExport(xml, project) {
                 environment = jiraHtmlToMarkdown(xmlItem.childNamed("environment").val);
                 issue.body += "\n#### Environment\n" + environment;
             }
+            affected_versions = []
+            childValuesFrom(xmlItem, "version", affected_versions);
+            if (affected_versions.length > 0) {
+                issue.body += "\n#### Affected Versions\n" + toString(affected_versions);
+            }
             issue.created_at = jiraDateFrom(xmlItem, "created");
             issue.closed_at = jiraDateFrom(xmlItem, "resolved");
 
@@ -178,6 +187,11 @@ function jiraProcessXmlExport(xml, project) {
 
             // establish the labels
             issue.labels = [];
+
+            if (issue.body.length >= MAX_BODY_LENGTH) {
+                issue.labels.push("ERR: Length");
+                issue.body = "#### Comment too long. Imported partially\n" + issue.body.substring(0, MAX_BODY_LENGTH);
+            }
 
             childValuesFrom(xmlItem, "type", issue.labels, "Type: ");
             childValuesFrom(xmlItem, "priority", issue.labels, "Priority: ");
@@ -222,6 +236,10 @@ function jiraProcessXmlExport(xml, project) {
                         author = "@" + project.username_map[author];
                     var created = jiraDateToJavaScript(xmlComment.attr.created);
                     var body = jiraHtmlToMarkdown(xmlComment.val, issue.project);
+                    if (body.length >= MAX_BODY_LENGTH) {
+                        issue.labels.push("ERR: Length");
+                        issue.body = "#### Comment too long. Imported partially\n" + issue.body.substring(0, MAX_BODY_LENGTH);
+                    }
 
                     comments.push({
                         created_at: created,

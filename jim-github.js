@@ -154,6 +154,7 @@ function createIssue(github, username, token, repository, issue, comments, miles
         if (!(issue.assignee in collaborators)) {
             // Add a comment storing the old assignee who is not a collaborator
             if (issue.assignee) {
+                issue.labels.push("ERR: Assignee");
                 comments.push({
                     created_at: issue.created_at,
                     body: "Was assigned to " + issue.assignee
