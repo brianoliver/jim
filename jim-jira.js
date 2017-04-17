@@ -14,6 +14,7 @@ var xmldoc     = require('xmldoc');
 // locally defined modules
 var childValuesFrom = require('./jim-xml').childValuesFrom;
 var splitID         = require('./jim-strings').splitID;
+var toString        = require('./jim-strings').toString;
 
 // constants
 var jiraDateFormat = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
@@ -162,9 +163,15 @@ function jiraProcessXmlExport(xml, project) {
             [issue.project, issue.id] = splitID(key);
 
             issue.title = xmlItem.childNamed("summary").val;
+            issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
             if (xmlItem.childNamed("environment").val != "") {
                 environment = jiraHtmlToMarkdown(xmlItem.childNamed("environment").val);
                 issue.body += "\n#### Environment\n" + environment;
+            }
+            affected_versions = []
+            childValuesFrom(xmlItem, "version", affected_versions);
+            if (affected_versions.length > 0) {
+                issue.body += "\n#### Affected Versions\n" + toString(affected_versions);
             }
             issue.created_at = jiraDateFrom(xmlItem, "created");
             issue.closed_at = jiraDateFrom(xmlItem, "resolved");
@@ -181,7 +188,6 @@ function jiraProcessXmlExport(xml, project) {
             // establish the labels
             issue.labels = [];
 
-            issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
             if (issue.body.length >= MAX_BODY_LENGTH) {
                 issue.labels.push("ERR: Length");
                 issue.body = "#### Comment too long. Imported partially\n" + issue.body.substring(0, MAX_BODY_LENGTH);
