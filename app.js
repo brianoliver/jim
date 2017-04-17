@@ -18,6 +18,7 @@ var xmldoc          = require('xmldoc');
 
 // promisify modules and methods
 var eachLine = Promise.promisify(lineReader.eachLine);
+var jsonfile = Promise.promisifyAll(require('jsonfile'));
 
 // locally defined and provided modules
 var jiraGetProjectList      = require('./jim-jira').jiraGetProjectList;
@@ -77,6 +78,19 @@ app.post('/collaborators', function(req, res) {
     importCollaborators(repository, username, token, new_collaborators, res);
 });
 
+function jsonRead(fileName) {
+    return fileExists(fileName)
+        .then(function () {
+            console.log("Loading json file from " + fileName);
+            return jsonfile.readFileAsync(fileName);
+        })
+}
+
+function jsonWrite(fileName, jsonData) {
+    console.log("Dumping json file to " + fileName);
+    return jsonfile.writeFileAsync(fileName, jsonData);
+}
+
 app.post('/migrate', function (req, res) {
 
     var projectName     = req.body.project;
@@ -107,6 +121,8 @@ app.post('/migrate', function (req, res) {
     project.username_map = {};
 
     var mappingsFile = path.resolve(__dirname, './mapping.txt');
+    var jsonDumpFile = path.resolve(__dirname, './json/' + project.name + '.json');
+    var jsonReadFile = jsonDumpFile;
 
     fileExists(mappingsFile)
         .then(function (status) {
@@ -121,6 +137,13 @@ app.post('/migrate', function (req, res) {
             console.log("Custom Username mapping.txt file does not exist.  Ignoring for now.");
         })
         .then(function () {
+            return jsonRead(jsonReadFile);
+        })
+        .then(function(data) {
+            console.log("JSON Data read from " + jsonReadFile);
+            project = data;
+        })
+        .catch(function () {
             // determine the number of issues in the project
             var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=project+%3D+" + projectName + "&order+by+created+desc&tempMax=1";
 
@@ -129,75 +152,85 @@ app.post('/migrate', function (req, res) {
             res.write("<p>Analyzing java.net <b>" + projectName + "</b>. Please wait.</p>");
 
             // attempt the import
-            return request(url);
+            return request(url)
+                .then(function (xml) {
+                    //parse the xml
+                    var xmlQuery = new xmldoc.XmlDocument(xml);
+
+                    var xmlChannel = xmlQuery.childNamed("channel");
+
+                    // determine the total issues based on the range of issue numbers returned
+                    var xmlIssueRange = xmlChannel.childNamed("issue");
+                    project.totalIssues = xmlIssueRange.attr.total;
+
+                    // determine the items
+                    var xmlItems = xmlChannel.childrenNamed("item");
+
+                    if (xmlItems.length == 1 && project.totalIssues > 0) {
+                        // determine the last known issue using the last issue key returned
+                        var xmlItem = xmlItems[0];
+
+                        var key = xmlItem.childNamed("key").val;
+
+                        [project.name, project.lastIssueId] = splitID(key);
+
+                        res.write("<p>Detected " + project.totalIssues + " JIRA Issues to migrate, the last being issue " + project.name + "-" + project.lastIssueId + "</p>");
+
+                        // create promises to load each issue
+                        var xmlDocuments = [];
+
+                        console.log("Commencing retrieval of " + project.totalIssues + " issues");
+
+                        var firstIssue = 1;
+                        var lastIssue = project.lastIssueId;
+
+                        return jiraFetchIssues(project, firstIssue, lastIssue)
+                            .then(function () {
+                                project.projects = Array.from(project.projects);
+                                project.versions = Array.from(project.versions);
+                                project.components = Array.from(project.components);
+                                project.assignees = Array.from(project.assignees);
+                                project.types = Array.from(project.types);
+                                project.statuses = Array.from(project.statuses);
+                                project.resolutions = Array.from(project.resolutions);
+                                project.priorities = Array.from(project.priorities);
+
+                                jsonWrite(jsonDumpFile, project)
+                                    .then(function() {
+                                        console.log("JSON data dumped");
+                                    })
+                                    .catch(function (err) {
+                                        console.log(err);
+                                    })
+                            })
+                    }
+                    else {
+                        res.write("<p>No items to migrate</p>");
+                    }
+                })
         })
-        .then(function (xml) {
-            //parse the xml
-            var xmlQuery = new xmldoc.XmlDocument(xml);
+        .then(function () {
+            // sort the issues
+            project.issues.sort(function(issueA, issueB) {
+                return issueA.issue.id - issueB.issue.id;
+            });
 
-            var xmlChannel = xmlQuery.childNamed("channel");
+            console.log(project);
 
-            // determine the total issues based on the range of issue numbers returned
-            var xmlIssueRange = xmlChannel.childNamed("issue");
-            project.totalIssues = xmlIssueRange.attr.total;
+            res.write("<p>Discovered Projects: " + toString(project.projects) + "</p>");
+            res.write("<p>Discovered Versions: " + toString(project.versions) + "</p>");
+            res.write("<p>Discovered Components: " + toString(project.components) + "</p>");
+            res.write("<p>Discovered Assignees: " + toString(project.assignees) + "</p>");
+            res.write("<p>Discovered Types: " + toString(project.types) + "</p>");
+            res.write("<p>Discovered Statuses: " + toString(project.statuses) + "</p>");
+            res.write("<p>Discovered Resolutions: " + toString(project.resolutions) + "</p>");
+            res.write("<p>Discovered Priorities: " + toString(project.priorities) + "</p>");
 
-            // determine the items
-            var xmlItems = xmlChannel.childrenNamed("item");
-
-            if (xmlItems.length == 1 && project.totalIssues > 0) {
-                // determine the last known issue using the last issue key returned
-                var xmlItem = xmlItems[0];
-
-                var key = xmlItem.childNamed("key").val;
-
-                [project.name, project.lastIssueId] = splitID(key);
-
-                res.write("<p>Detected " + project.totalIssues + " JIRA Issues to migrate, the last being issue " + project.name + "-" + project.lastIssueId + "</p>");
-
-                // create promises to load each issue
-                var xmlDocuments = [];
-
-                console.log("Commencing retrieval of " + project.totalIssues + " issues");
-
-                console.time("Issue Export");
-
-                var firstIssue = 1;
-                var lastIssue = project.lastIssueId;
-
-                var promises = jiraFetchIssues(project, firstIssue, lastIssue);
-
-                promises.then(function () {
-                    console.timeEnd("Issue Export");
-
-                    console.log("Completed export of " + xmlDocuments.length + " issues");
-
-                    // sort the issues
-                    project.issues.sort(function(issueA, issueB) {
-                        return issueA.issue.id - issueB.issue.id;
-                    });
-
-                    console.log(project);
-
-                    res.write("<p>Discovered Projects: " + toString(project.projects) + "</p>");
-                    res.write("<p>Discovered Versions: " + toString(project.versions) + "</p>");
-                    res.write("<p>Discovered Components: " + toString(project.components) + "</p>");
-                    res.write("<p>Discovered Assignees: " + toString(project.assignees) + "</p>");
-                    res.write("<p>Discovered Types: " + toString(project.types) + "</p>");
-                    res.write("<p>Discovered Statuses: " + toString(project.statuses) + "</p>");
-                    res.write("<p>Discovered Resolutions: " + toString(project.resolutions) + "</p>");
-                    res.write("<p>Discovered Priorities: " + toString(project.priorities) + "</p>");
-
-                    // perform the migration
-                    importJIRAProject(project, res);
-                });
-
-            } else {
-                res.write("<p>No items to migrate</p>");
-            }
+            // perform the migration
+            importJIRAProject(project, res);
         })
-        .catch(function (xml) {
-            console.log(xml);
-
+        .catch(function(err) {
+            console.log(err);
             res.sendStatus(500);
         });
 });
