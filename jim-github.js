@@ -202,7 +202,7 @@ function createIssue(github, username, token, repository, issue, comments, miles
         delete issue.fixVersion;
 
         // create the issue using the issue importer API
-        var options = {
+        var postRequestOptions = {
             method: 'POST',
             uri: 'https://api.github.com/repos/' + username + '/' + repository + '/import/issues',
             headers: {
@@ -217,7 +217,7 @@ function createIssue(github, username, token, repository, issue, comments, miles
             }
         };
 
-        var options_1 = {
+        var getRequestOptions = {
             method: 'GET',
             headers: {
                 'Authorization': "token " + token,
@@ -233,7 +233,7 @@ function createIssue(github, username, token, repository, issue, comments, miles
         console.log(comments);
 
         retry(function() {
-            return request(options)
+            return request(postRequestOptions)
                 .then(function (body) {
                     if (body.id) {
                         console.log("Migrating JIRA " + jiraProject + "-" + jiraIssue + ".  Created GitHub Request: " + body.id + ". (" + body.status + ")");
@@ -242,10 +242,10 @@ function createIssue(github, username, token, repository, issue, comments, miles
 
                         // wait until the issue is imported
                         // options for the status request
-                        options_1.uri = body.url;
+                        getRequestOptions.uri = body.url;
 
                         return retry(function() {
-                            return request(options_1)
+                            return request(getRequestOptions)
                                 .then(function(body) {
                                     switch(body.status) {
                                         case "imported":
@@ -253,7 +253,7 @@ function createIssue(github, username, token, repository, issue, comments, miles
                                             return Promise.resolve(githubIssue);
                                         case "failed":
                                             console.log("$$$$ ERROR $$$$");
-                                            console.log(options);
+                                            console.log(postRequestOptions);
                                             console.log(body);
                                             throw new retry.StopError('failed');
                                         default:
