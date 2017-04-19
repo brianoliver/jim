@@ -77,7 +77,7 @@ function createCollaborator(github, username, repository, collaborator)
 {
     return new Promise(function (resolve, reject) {
 
-        github.repos.addCollaborator({ owner:username, repo:repository, username:collaborator}, function (error, response)
+        github.repos.addCollaborator({ owner:username, repo:repository, username:collaborator, permission:"pull"}, function (error, response)
         {
             if (error) {
                 // when label already exists we carry on
