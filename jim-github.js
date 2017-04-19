@@ -77,7 +77,7 @@ function createCollaborator(github, username, repository, collaborator)
 {
     return new Promise(function (resolve, reject) {
 
-        github.repos.addCollaborator({ owner:username, repo:repository, username:collaborator}, function (error, response)
+        github.repos.addCollaborator({ owner:username, repo:repository, username:collaborator, permission:"pull"}, function (error, response)
         {
             if (error) {
                 // when label already exists we carry on
@@ -202,7 +202,7 @@ function createIssue(github, username, token, repository, issue, comments, miles
         delete issue.fixVersion;
 
         // create the issue using the issue importer API
-        var options = {
+        var postRequestOptions = {
             method: 'POST',
             uri: 'https://api.github.com/repos/' + username + '/' + repository + '/import/issues',
             headers: {
@@ -217,58 +217,78 @@ function createIssue(github, username, token, repository, issue, comments, miles
             }
         };
 
+        var getRequestOptions = {
+            method: 'GET',
+            headers: {
+                'Authorization': "token " + token,
+                'Accept': "application/vnd.github.golden-comet-preview+json",
+                'User-Agent': USER_AGENT
+            },
+            json: true
+        };
+
         console.log("Importing Issue: " + jiraIssue);
 
         console.log(issue);
         console.log(comments);
 
-        request(options)
-            .then(function (body) {
-                if (body.id) {
-                    console.log("Migrating JIRA " + jiraProject + "-" + jiraIssue + ".  Created GitHub Request: " + body.id + ". (" + body.status + ")");
+        retry(function() {
+            return request(postRequestOptions)
+                .then(function (body) {
+                    if (body.id) {
+                        console.log("Migrating JIRA " + jiraProject + "-" + jiraIssue + ".  Created GitHub Request: " + body.id + ". (" + body.status + ")");
 
-                    response.write("Created GitHub Request " + body.id + ".  ");
+                        response.write("Created GitHub Request " + body.id + ".  ");
 
-                    // wait until the issue is imported
-                    options.method = 'GET';
-                    options.uri = body.url;
-                    delete options.body;
+                        // wait until the issue is imported
+                        // options for the status request
+                        getRequestOptions.uri = body.url;
 
-                    retry(function() {
-                        return request(options)
-                            .then(function(body) {
-
-
-
-                                switch(body.status) {
-                                    case "imported":
-                                        var githubIssue = body.issue_url.split("/").pop();
-                                        return Promise.resolve(githubIssue);
-                                    case "failed":
-                                        console.log("$$$$ ERROR $$$$");
-                                        console.log(body);
-                                        
-                                        return Promise.reject(new Error(JSON.stringify(body)));
-                                    default:
-                                        return Promise.reject(new Error('JIRA Issue migration still pending.  Last result:' + JSON.stringify(body)));
+                        return retry(function() {
+                            return request(getRequestOptions)
+                                .then(function(body) {
+                                    switch(body.status) {
+                                        case "imported":
+                                            var githubIssue = body.issue_url.split("/").pop();
+                                            return Promise.resolve(githubIssue);
+                                        case "failed":
+                                            console.log("$$$$ ERROR $$$$");
+                                            console.log(postRequestOptions);
+                                            console.log(body);
+                                            throw new retry.StopError('failed');
+                                        default:
+                                            return Promise.reject(new Error('JIRA Issue migration still pending.  Last result:' + JSON.stringify(body)));
+                                    }
+                                });
+                        }, { timeout: timeout })
+                            .then(function(githubIssue) {
+                                return Promise.resolve(githubIssue);
+                            })
+                            .catch(function(error) {
+                                if(error.message && error.message == 'failed') {
+                                    console.log("Request Failed. Will retry again");
                                 }
+                                else {
+                                    console.log("Timeout. Will retry again");
+                                }
+                                return Promise.reject(new Error(error));
                             });
-                    }, { timeout: timeout })
-                        .done(function(githubIssue) {
-                            console.log("Created GitHub Issue #" + githubIssue + " for JIRA Issue: " + jiraIssue)
+                    } else {
+                        console.log("Failed to migrate JIRA Issue: " + jiraIssue + " because: " + body.message);
 
-                            response.write("Successfully created GitHub Issue # " + githubIssue + ".</p>");
+                        response.write("Failed to migrate JIRA Issue " + jiraIssue + " because: " + body.message + "</p>");
 
-                            resolve(body);
-                        });
+                        reject(body);
+                    }
+                })
 
-                } else {
-                    console.log("Failed to migrate JIRA Issue: " + jiraIssue + " because: " + body.message);
+        }, {max_tries: -1})
+            .then(function(githubIssue) {
+                console.log("Created GitHub Issue #" + githubIssue + " for JIRA Issue: " + jiraIssue)
 
-                    response.write("Failed to migrate JIRA Issue " + jiraIssue + " because: " + body.message + "</p>");
+                response.write("Successfully created GitHub Issue # " + githubIssue + ".</p>");
 
-                    reject(body);
-                }
+                resolve(githubIssue);
             })
             .catch(function (error) {
                 console.log("Failed to migrate JIRA Issue: " + issue + " due to " + error);
