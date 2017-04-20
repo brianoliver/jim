@@ -255,7 +255,12 @@ function createIssue(github, username, token, repository, issue, comments, miles
                                             console.log("$$$$ ERROR $$$$");
                                             console.log(postRequestOptions);
                                             console.log(body);
-                                            throw new retry.StopError('failed');
+                                            if(body.errors && body.errors[0].resource == "Internal Error") {
+                                                throw new retry.StopError('internal_error');
+                                            }
+                                            else {
+                                                throw new retry.StopError('other_error');
+                                            }
                                         default:
                                             return Promise.reject(new Error('JIRA Issue migration still pending.  Last result:' + JSON.stringify(body)));
                                     }
@@ -265,12 +270,13 @@ function createIssue(github, username, token, repository, issue, comments, miles
                                 return Promise.resolve(githubIssue);
                             })
                             .catch(function(error) {
-                                if(error.message && error.message == 'failed') {
-                                    console.log("Request Failed. Will retry again");
+                                if(error.message) {
+                                    if(error.message == "other_error") {
+                                        console.log("Request Failed due to some other error. Check logs");
+                                        throw new retry.StopError('other_error');
+                                    }
                                 }
-                                else {
-                                    console.log("Timeout. Will retry again");
-                                }
+                                console.log("Request Failed. Will retry again");
                                 return Promise.reject(new Error(error));
                             });
                     } else {
