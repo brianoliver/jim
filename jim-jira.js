@@ -238,7 +238,7 @@ function jiraProcessXmlExport(xml, project) {
                     var body = jiraHtmlToMarkdown(xmlComment.val, issue.project);
                     if (body.length >= MAX_BODY_LENGTH) {
                         issue.labels.push("ERR: Length");
-                        issue.body = "#### Comment too long. Imported partially\n" + issue.body.substring(0, MAX_BODY_LENGTH);
+                        body = "#### Comment too long. Imported partially\n" + body.substring(0, MAX_BODY_LENGTH);
                     }
 
                     comments.push({
