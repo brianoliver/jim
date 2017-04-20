@@ -317,7 +317,7 @@ function getCollaborators(github, username, repository, collaborators)
     return new Promise(function (resolve, reject) {
         console.log("Obtaining Collaborators from GitHub");
 
-        github.repos.getCollaborators({owner: username, repo: repository}, function (error, response) {
+        github.repos.getCollaborators({owner: username, repo: repository, per_page: 100}, function (error, response) {
             if (error) {
                 return reject(error);
             } else {
