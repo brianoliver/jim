@@ -255,11 +255,16 @@ function createIssue(github, username, token, repository, issue, comments, miles
                                             console.log("$$$$ ERROR $$$$");
                                             console.log(postRequestOptions);
                                             console.log(body);
-                                            if(body.errors && body.errors[0].resource == "Internal Error") {
-                                                throw new retry.StopError('internal_error');
+                                            if(body.errors) {
+                                                if(body.errors[0].resource == "Internal Error") {
+                                                    throw new retry.StopError('internal_error');
+                                                }
+                                                else {
+                                                    throw new retry.StopError('other_error');
+                                                }
                                             }
                                             else {
-                                                throw new retry.StopError('other_error');
+                                                return Promise.reject(new Error(JSON.stringify(body)));
                                             }
                                         default:
                                             return Promise.reject(new Error('JIRA Issue migration still pending.  Last result:' + JSON.stringify(body)));
