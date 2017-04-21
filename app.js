@@ -108,6 +108,7 @@ app.post('/migrate', function (req, res) {
     var username        = req.body.username;
     var defaultusername = req.body.defaultusername;
     var token           = req.body.token;
+    var offset          = req.body.offset;
     
     // establish an initial JSON representation of the JIRA project, it's issues and migration information
     var project = {};
@@ -116,6 +117,7 @@ app.post('/migrate', function (req, res) {
     project.username = username;
     project.defaultusername = defaultusername;
     project.token = token;
+    project.offset = offset;
     
     project.versions = new Set();
     project.components = new Set();
@@ -222,7 +224,7 @@ app.post('/migrate', function (req, res) {
         .then(function () {
             // sort the issues
             project.issues.sort(function(issueA, issueB) {
-                return issueA.issue.id - issueB.issue.id;
+                return issueA.issue.old_id - issueB.issue.old_id;
             });
 
             console.log(project);
