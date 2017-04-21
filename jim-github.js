@@ -108,13 +108,13 @@ function getIssue(github, username, repository, number) {
 
 
 function createIssueIfAbsent(github, username, token, repository, issue, comments, milestones, collaborators, timeout, response, defaultusername) {
-    return getIssue(github, username, repository, issue.id)
+    return getIssue(github, username, repository, issue.new_id)
         .then(function(existing) {
 
             var jiraProject = issue.project;
-            var jiraIssue = issue.id;
+            var jiraIssue = issue.old_id;
 
-            console.log("Skipping JIRA Issue: " + issue.id + " as a GitHub Issue already exists");
+            console.log("Skipping JIRA Issue: " + issue.old_id + " as a GitHub Issue already exists");
 
             response.write("<p>Skipping the migration of JIRA " + jiraProject + "-" + jiraIssue + " as it already exists.</p>");
 
@@ -134,7 +134,8 @@ function createIssue(github, username, token, repository, issue, comments, miles
     return new Promise(function (resolve, reject) {
 
         var jiraProject = issue.project;
-        var jiraIssue = issue.id;
+        var jiraIssue = issue.old_id;
+        var githubIssue = issue.new_id;
 
         console.log("Migrating JIRA Issue: " + jiraIssue + " to GitHub");
 
@@ -168,7 +169,7 @@ function createIssue(github, username, token, repository, issue, comments, miles
         // add a comment indicating the issue was automatically imported
         comments.push({
             created_at: new Date(),
-            body: "This issue was imported from java.net JIRA " + issue.project + "-" + issue.id
+            body: "This issue was imported from java.net JIRA " + issue.project + "-" + issue.old_id
         });
 
         // add a comment indicating the reporter (when defined)
@@ -195,7 +196,8 @@ function createIssue(github, username, token, repository, issue, comments, miles
         }
 
         // remove JIRA specific properties
-        delete issue.id;
+        delete issue.old_id;
+        delete issue.new_id;
         delete issue.project;
         delete issue.reporter;
         delete issue.resolution;

@@ -87,7 +87,8 @@ function createUnavailableIssue(project, issueId)
     var issue = {};
 
     issue.project = project.name;
-    issue.id      = issueId;
+    issue.old_id  = issueId;
+    issue.new_id  = Number(issue.old_id) + Number(project.offset);
     issue.title   = "Unavailable";
     issue.body    = "This issue was unavailable for migration from original issue tracker.";
 
@@ -160,7 +161,8 @@ function jiraProcessXmlExport(xml, project) {
 
             // determine the JIRA Project and Issue ID
             var key = xmlItem.childNamed("key").val;
-            [issue.project, issue.id] = splitID(key);
+            [issue.project, issue.old_id] = splitID(key);
+            issue.new_id = Number(issue.old_id) + Number(project.offset);
 
             issue.title = xmlItem.childNamed("summary").val;
             issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
@@ -274,15 +276,17 @@ function jiraProcessXmlExport(xml, project) {
             }
 
             tmp_project = "";
-            tmp_id = "";
+            tmp_old_id = "";
+            tmp_new_id = "";
 
             // ----- extract all sub-tasks and add as comments -----
             subtasks = [];
             childValuesFrom(xmlItem.childNamed("subtasks"), "subtask", subtasks);
             tmp_body = "Sub-Tasks:\n";
             for (var i = 0; i < subtasks.length; i++) {
-                [tmp_project, tmp_id] = splitID(subtasks[i]);
-                tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
+                [tmp_project, tmp_old_id] = splitID(subtasks[i]);
+                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                 tmp_body += "[" + subtasks[i] + "](" + tmp_url + ")\n";
             }
             if (subtasks.length != 0) {
@@ -297,8 +301,9 @@ function jiraProcessXmlExport(xml, project) {
 
             if (parent) {
                 tmp_body = "Parent-Task: ";
-                [tmp_project, tmp_id] = splitID(parent.val);
-                tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
+                [tmp_project, tmp_old_id] = splitID(parent.val);
+                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                 tmp_body += "[" + parent.val + "](" + tmp_url + ")\n";
                 comments.push({
                     created_at: issue.created_at,
@@ -319,8 +324,9 @@ function jiraProcessXmlExport(xml, project) {
                             tmp_body += outwardLinks.attr.description + "\n";
                             outwardLinks.childrenNamed('issuelink').forEach(function (issuelink) {
                                 tmp_key = issuelink.valueWithPath('issuekey');
-                                [tmp_project, tmp_id] = splitID(tmp_key);
-                                tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
+                                [tmp_project, tmp_old_id] = splitID(tmp_key);
+                                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                                tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                                 tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
                             });
                         }
@@ -328,8 +334,9 @@ function jiraProcessXmlExport(xml, project) {
                             tmp_body += inwardLinks.attr.description + "\n";
                             inwardLinks.childrenNamed('issuelink').forEach(function (issuelink) {
                                 tmp_key = issuelink.valueWithPath('issuekey');
-                                [tmp_project, tmp_id] = splitID(tmp_key);
-                                tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_id;
+                                [tmp_project, tmp_old_id] = splitID(tmp_key);
+                                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                                tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                                 tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
                             });
                         }
