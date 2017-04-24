@@ -285,7 +285,10 @@ function jiraProcessXmlExport(xml, project) {
             tmp_body = "Sub-Tasks:\n";
             for (var i = 0; i < subtasks.length; i++) {
                 [tmp_project, tmp_old_id] = splitID(subtasks[i]);
-                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                if(tmp_project.toLowerCase() == project.name.toLowerCase()) {
+                    tmp_project = project.repository;
+                }
+                tmp_new_id = Number(tmp_old_id) + project.offset;
                 tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                 tmp_body += "[" + subtasks[i] + "](" + tmp_url + ")\n";
             }
@@ -302,7 +305,10 @@ function jiraProcessXmlExport(xml, project) {
             if (parent) {
                 tmp_body = "Parent-Task: ";
                 [tmp_project, tmp_old_id] = splitID(parent.val);
-                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                if(tmp_project.toLowerCase() == project.name.toLowerCase()) {
+                    tmp_project = project.repository;
+                }
+                tmp_new_id = Number(tmp_old_id) + project.offset;
                 tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                 tmp_body += "[" + parent.val + "](" + tmp_url + ")\n";
                 comments.push({
@@ -325,7 +331,10 @@ function jiraProcessXmlExport(xml, project) {
                             outwardLinks.childrenNamed('issuelink').forEach(function (issuelink) {
                                 tmp_key = issuelink.valueWithPath('issuekey');
                                 [tmp_project, tmp_old_id] = splitID(tmp_key);
-                                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                                if(tmp_project.toLowerCase() == project.name.toLowerCase()) {
+                                    tmp_project = project.repository;
+                                }
+                                tmp_new_id = Number(tmp_old_id) + project.offset;
                                 tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                                 tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
                             });
@@ -335,7 +344,10 @@ function jiraProcessXmlExport(xml, project) {
                             inwardLinks.childrenNamed('issuelink').forEach(function (issuelink) {
                                 tmp_key = issuelink.valueWithPath('issuekey');
                                 [tmp_project, tmp_old_id] = splitID(tmp_key);
-                                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                                if(tmp_project.toLowerCase() == project.name.toLowerCase()) {
+                                    tmp_project = project.repository;
+                                }
+                                tmp_new_id = Number(tmp_old_id) + project.offset;
                                 tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                                 tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
                             });
