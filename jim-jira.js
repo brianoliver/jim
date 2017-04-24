@@ -206,6 +206,14 @@ function jiraProcessXmlExport(xml, project) {
                 childValuesFrom(tagsNode.childNamed("customfieldvalues"), "label", issue.labels);
             }
 
+            // Check the labels once for formatting issues
+            issue.labels.forEach(function (label, index) {
+                // If last character is a comma, delete it and store the label
+                if (label[label.length - 1] == ",") {
+                    issue.labels[index] = label.substring(0, label.length - 1);
+                }
+            });
+
             // extract the assignee and reporter
             issue.assignee = xmlItem.childNamed("assignee").attr.username;
             // Unassigned
