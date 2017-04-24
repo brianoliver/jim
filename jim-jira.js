@@ -224,14 +224,17 @@ function jiraProcessXmlExport(xml, project) {
             if (issue.assignee in project.username_map)
                 issue.assignee = project.username_map[issue.assignee];
 
-            if (issue.reporter in project.username_map)
+            var reporterInMap = false;
+            if (issue.reporter in project.username_map) {
+                reporterInMap = true;
                 issue.reporter = project.username_map[issue.reporter];
+            }
 
             // add a comment indicating the reporter (when defined)
             if (issue.reporter) {
                 comments.push({
                     created_at: issue.created_at,
-                    body: "Reported by " + (issue.reporter in project.username_map ? "@" : "") + issue.reporter
+                    body: "Reported by " + (reporterInMap ? "@" : "") + issue.reporter
                 });
             };
 
