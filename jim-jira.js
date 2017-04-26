@@ -89,7 +89,7 @@ function createUnavailableIssue(project, issueId)
 
     issue.project = project.name;
     issue.old_id  = issueId;
-    issue.new_id  = Number(issue.old_id) + Number(project.offset);
+    issue.new_id  = Number(issue.old_id) + project.offset;
     issue.title   = "Unavailable";
     issue.body    = "This issue was unavailable for migration from original issue tracker.";
 
@@ -166,12 +166,12 @@ function jiraProcessXmlExport(xml, project, key) {
                 throw "Issue Key returned is different: " + xml;
             }
             [issue.project, issue.old_id] = splitID(key);
-            issue.new_id = Number(issue.old_id) + Number(project.offset);
+            issue.new_id = Number(issue.old_id) + project.offset;
 
             issue.title = xmlItem.childNamed("summary").val;
-            issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
+            issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project, project.offset).trim();
             if (xmlItem.childNamed("environment").val != "") {
-                environment = jiraHtmlToMarkdown(xmlItem.childNamed("environment").val);
+                environment = jiraHtmlToMarkdown(xmlItem.childNamed("environment").val, issue.project, project.offset);
                 issue.body += "\n#### Environment\n" + environment;
             }
             affected_versions = []
@@ -249,7 +249,7 @@ function jiraProcessXmlExport(xml, project, key) {
                     if (author in project.username_map)
                         author = "@" + project.username_map[author];
                     var created = jiraDateToJavaScript(xmlComment.attr.created);
-                    var body = jiraHtmlToMarkdown(xmlComment.val, issue.project);
+                    var body = jiraHtmlToMarkdown(xmlComment.val, issue.project, project.offset);
                     if (body.length >= MAX_BODY_LENGTH) {
                         issue.labels.push("ERR: Length");
                         body = "#### Comment too long. Imported partially\n" + body.substring(0, MAX_BODY_LENGTH);
@@ -297,7 +297,7 @@ function jiraProcessXmlExport(xml, project, key) {
             tmp_body = "Sub-Tasks:\n";
             for (var i = 0; i < subtasks.length; i++) {
                 [tmp_project, tmp_old_id] = splitID(subtasks[i]);
-                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                tmp_new_id = Number(tmp_old_id) + project.offset;
                 tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                 tmp_body += "[" + subtasks[i] + "](" + tmp_url + ")\n";
             }
@@ -314,7 +314,7 @@ function jiraProcessXmlExport(xml, project, key) {
             if (parent) {
                 tmp_body = "Parent-Task: ";
                 [tmp_project, tmp_old_id] = splitID(parent.val);
-                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                tmp_new_id = Number(tmp_old_id) + project.offset;
                 tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                 tmp_body += "[" + parent.val + "](" + tmp_url + ")\n";
                 comments.push({
@@ -337,7 +337,7 @@ function jiraProcessXmlExport(xml, project, key) {
                             outwardLinks.childrenNamed('issuelink').forEach(function (issuelink) {
                                 tmp_key = issuelink.valueWithPath('issuekey');
                                 [tmp_project, tmp_old_id] = splitID(tmp_key);
-                                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                                tmp_new_id = Number(tmp_old_id) + project.offset;
                                 tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                                 tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
                             });
@@ -347,7 +347,7 @@ function jiraProcessXmlExport(xml, project, key) {
                             inwardLinks.childrenNamed('issuelink').forEach(function (issuelink) {
                                 tmp_key = issuelink.valueWithPath('issuekey');
                                 [tmp_project, tmp_old_id] = splitID(tmp_key);
-                                tmp_new_id = Number(tmp_old_id) + Number(project.offset);
+                                tmp_new_id = Number(tmp_old_id) + project.offset;
                                 tmp_url = "https://github.com/" + project.username + "/" + tmp_project.toLowerCase() + "/issues/" + tmp_new_id;
                                 tmp_body += "[" + tmp_key + "](" + tmp_url + ")\n";
                             });
@@ -391,7 +391,7 @@ function jiraDateFrom(xmlFromElement, elementName)
 /**
  * A function to convert JIRA produced HTML for a specific project (JIRA-KEY) into Markdown.
  */
-function jiraHtmlToMarkdown(html, projectKey)
+function jiraHtmlToMarkdown(html, projectKey, projectOffset)
 {
     // custom converters for html to markdown
     var untagConverter = {
@@ -424,7 +424,12 @@ function jiraHtmlToMarkdown(html, projectKey)
     markdown = markdown.replace(/                /g, "");
 
     // replace/refactor links to JIRAs into links to GitHub Issues
-    markdown = markdown.replace(new RegExp("\\[" + projectKey + "-([0-9]*)\\]\\([^\\)]*\\)", "g"), "#$1");
+    function replacer(match, p1) {
+        // New ID = Old ID + offset
+        newID = Number(p1) + projectOffset;
+        return "#" + newID;
+    }
+    markdown = markdown.replace(new RegExp("\\[" + projectKey + "-([0-9]*)\\]\\([^\\)]*\\)", "g"), replacer);
 
     return markdown;
 }

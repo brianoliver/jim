@@ -117,7 +117,7 @@ app.post('/migrate', function (req, res) {
     project.username = username;
     project.defaultusername = defaultusername;
     project.token = token;
-    project.offset = offset;
+    project.offset = Number(offset);
     
     project.versions = new Set();
     project.components = new Set();
