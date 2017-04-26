@@ -160,6 +160,7 @@ function jiraProcessXmlExport(xml, project, key) {
 
         xmlItems.forEach(function (xmlItem) {
             var issue = {};
+            var comments = [];
 
             // determine the JIRA Project and Issue ID
             if(xmlItems[0].childNamed("key").val != key) {
@@ -227,8 +228,19 @@ function jiraProcessXmlExport(xml, project, key) {
             if (issue.assignee in project.username_map)
                 issue.assignee = project.username_map[issue.assignee];
 
-            if (issue.reporter in project.username_map)
+            var reporterInMap = false;
+            if (issue.reporter in project.username_map) {
+                reporterInMap = true;
                 issue.reporter = project.username_map[issue.reporter];
+            }
+
+            // add a comment indicating the reporter (when defined)
+            if (issue.reporter) {
+                comments.push({
+                    created_at: issue.created_at,
+                    body: "Reported by " + (reporterInMap ? "@" : "") + issue.reporter
+                });
+            };
 
             // extract the resolution
             if (xmlItem.childNamed("resolution")) {
@@ -237,7 +249,6 @@ function jiraProcessXmlExport(xml, project, key) {
 
             // ----- extract the comments ------
 
-            var comments = [];
 
             var xmlComments = xmlItem.childNamed("comments");
 
