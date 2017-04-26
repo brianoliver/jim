@@ -51,8 +51,9 @@ function jiraFetchIssues(project, firstIssueId, lastIssueId) {
             }
 
             return Promise.map(issues,  function (issueId) {
+                var key = project.name + "-" + issueId;
                 // create a JQL query to request the required issue
-                var jql = "PROJECT+%3D+" + project.name + "+AND+ISSUE=" + project.name + "-" + issueId;
+                var jql = "PROJECT+%3D+" + project.name + "+AND+ISSUE=" + key;
 
                 // create a URL for an xml based JQL query
                 var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=" + jql;
@@ -63,7 +64,7 @@ function jiraFetchIssues(project, firstIssueId, lastIssueId) {
                         console.log("Retrieved Issue " + project.name + "-" + issueId);
 
                         // update the project model by processing the fetched xml
-                        jiraProcessXmlExport(xml, project, issueId)
+                        jiraProcessXmlExport(xml, project, key)
                     })
                     .catch(function (err) {
                         console.log("Oops! Failed to load issue " + project.name + "-" + issueId + " due to: " + err);
@@ -114,8 +115,9 @@ function createUnavailableIssue(project, issueId)
  * 
  * @param xml      xml string of a JIRA xml-bases issue export
  * @param project  the JSON representation of the JIRA project
+ * @param key      the issue key correspoding to the xml
  */
-function jiraProcessXmlExport(xml, project) {
+function jiraProcessXmlExport(xml, project, key) {
 
     //parse the xml
     var xmlJiraExport = new xmldoc.XmlDocument(xml);
@@ -160,7 +162,9 @@ function jiraProcessXmlExport(xml, project) {
             var issue = {};
 
             // determine the JIRA Project and Issue ID
-            var key = xmlItem.childNamed("key").val;
+            if(xmlItems[0].childNamed("key").val != key) {
+                throw "Issue Key returned is different: " + xml;
+            }
             [issue.project, issue.old_id] = splitID(key);
             issue.new_id = Number(issue.old_id) + Number(project.offset);
 
