@@ -172,14 +172,6 @@ function createIssue(github, username, token, repository, issue, comments, miles
             body: "This issue was imported from java.net JIRA " + issue.project + "-" + issue.old_id
         });
 
-        // add a comment indicating the reporter (when defined)
-        if (issue.reporter && issue.reporter != username) {
-            comments.push({
-                created_at: issue.created_at,
-                body: "Reported by " + (collaborators[issue.reporter] ? "@" : "") + issue.reporter
-            });
-        };
-
         // add a comment indicating the resolution
         if (issue.closed && issue.resolution) {
             comments.push({

@@ -51,8 +51,9 @@ function jiraFetchIssues(project, firstIssueId, lastIssueId) {
             }
 
             return Promise.map(issues,  function (issueId) {
+                var key = project.name + "-" + issueId;
                 // create a JQL query to request the required issue
-                var jql = "PROJECT+%3D+" + project.name + "+AND+ISSUE=" + project.name + "-" + issueId;
+                var jql = "PROJECT+%3D+" + project.name + "+AND+ISSUE=" + key;
 
                 // create a URL for an xml based JQL query
                 var url = "https://java.net/jira/sr/jira.issueviews:searchrequest-xml/temp/SearchRequest.xml?jqlQuery=" + jql;
@@ -63,7 +64,7 @@ function jiraFetchIssues(project, firstIssueId, lastIssueId) {
                         console.log("Retrieved Issue " + project.name + "-" + issueId);
 
                         // update the project model by processing the fetched xml
-                        jiraProcessXmlExport(xml, project, issueId)
+                        jiraProcessXmlExport(xml, project, key)
                     })
                     .catch(function (err) {
                         console.log("Oops! Failed to load issue " + project.name + "-" + issueId + " due to: " + err);
@@ -88,7 +89,7 @@ function createUnavailableIssue(project, issueId)
 
     issue.project = project.name;
     issue.old_id  = issueId;
-    issue.new_id  = Number(issue.old_id) + Number(project.offset);
+    issue.new_id  = Number(issue.old_id) + project.offset;
     issue.title   = "Unavailable";
     issue.body    = "This issue was unavailable for migration from original issue tracker.";
 
@@ -114,8 +115,9 @@ function createUnavailableIssue(project, issueId)
  * 
  * @param xml      xml string of a JIRA xml-bases issue export
  * @param project  the JSON representation of the JIRA project
+ * @param key      the issue key correspoding to the xml
  */
-function jiraProcessXmlExport(xml, project) {
+function jiraProcessXmlExport(xml, project, key) {
 
     //parse the xml
     var xmlJiraExport = new xmldoc.XmlDocument(xml);
@@ -158,16 +160,19 @@ function jiraProcessXmlExport(xml, project) {
 
         xmlItems.forEach(function (xmlItem) {
             var issue = {};
+            var comments = [];
 
             // determine the JIRA Project and Issue ID
-            var key = xmlItem.childNamed("key").val;
+            if(xmlItems[0].childNamed("key").val != key) {
+                throw "Issue Key returned is different: " + xml;
+            }
             [issue.project, issue.old_id] = splitID(key);
-            issue.new_id = Number(issue.old_id) + Number(project.offset);
+            issue.new_id = Number(issue.old_id) + project.offset;
 
             issue.title = xmlItem.childNamed("summary").val;
-            issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project).trim();
+            issue.body = jiraHtmlToMarkdown(xmlItem.childNamed("description").val, issue.project, project.offset).trim();
             if (xmlItem.childNamed("environment").val != "") {
-                environment = jiraHtmlToMarkdown(xmlItem.childNamed("environment").val);
+                environment = jiraHtmlToMarkdown(xmlItem.childNamed("environment").val, issue.project, project.offset);
                 issue.body += "\n#### Environment\n" + environment;
             }
             affected_versions = []
@@ -206,6 +211,14 @@ function jiraProcessXmlExport(xml, project) {
                 childValuesFrom(tagsNode.childNamed("customfieldvalues"), "label", issue.labels);
             }
 
+            // Check the labels once for formatting issues
+            issue.labels.forEach(function (label, index) {
+                // If last character is a comma, delete it and store the label
+                if (label[label.length - 1] == ",") {
+                    issue.labels[index] = label.substring(0, label.length - 1);
+                }
+            });
+
             // extract the assignee and reporter
             issue.assignee = xmlItem.childNamed("assignee").attr.username;
             // Unassigned
@@ -215,8 +228,19 @@ function jiraProcessXmlExport(xml, project) {
             if (issue.assignee in project.username_map)
                 issue.assignee = project.username_map[issue.assignee];
 
-            if (issue.reporter in project.username_map)
+            var reporterInMap = false;
+            if (issue.reporter in project.username_map) {
+                reporterInMap = true;
                 issue.reporter = project.username_map[issue.reporter];
+            }
+
+            // add a comment indicating the reporter (when defined)
+            if (issue.reporter) {
+                comments.push({
+                    created_at: issue.created_at,
+                    body: "Reported by " + (reporterInMap ? "@" : "") + issue.reporter
+                });
+            };
 
             // extract the resolution
             if (xmlItem.childNamed("resolution")) {
@@ -225,7 +249,6 @@ function jiraProcessXmlExport(xml, project) {
 
             // ----- extract the comments ------
 
-            var comments = [];
 
             var xmlComments = xmlItem.childNamed("comments");
 
@@ -237,7 +260,7 @@ function jiraProcessXmlExport(xml, project) {
                     if (author in project.username_map)
                         author = "@" + project.username_map[author];
                     var created = jiraDateToJavaScript(xmlComment.attr.created);
-                    var body = jiraHtmlToMarkdown(xmlComment.val, issue.project);
+                    var body = jiraHtmlToMarkdown(xmlComment.val, issue.project, project.offset);
                     if (body.length >= MAX_BODY_LENGTH) {
                         issue.labels.push("ERR: Length");
                         body = "#### Comment too long. Imported partially\n" + body.substring(0, MAX_BODY_LENGTH);
@@ -391,7 +414,7 @@ function jiraDateFrom(xmlFromElement, elementName)
 /**
  * A function to convert JIRA produced HTML for a specific project (JIRA-KEY) into Markdown.
  */
-function jiraHtmlToMarkdown(html, projectKey)
+function jiraHtmlToMarkdown(html, projectKey, projectOffset)
 {
     // custom converters for html to markdown
     var untagConverter = {
@@ -424,7 +447,12 @@ function jiraHtmlToMarkdown(html, projectKey)
     markdown = markdown.replace(/                /g, "");
 
     // replace/refactor links to JIRAs into links to GitHub Issues
-    markdown = markdown.replace(new RegExp("\\[" + projectKey + "-([0-9]*)\\]\\([^\\)]*\\)", "g"), "#$1");
+    function replacer(match, p1) {
+        // New ID = Old ID + offset
+        newID = Number(p1) + projectOffset;
+        return "#" + newID;
+    }
+    markdown = markdown.replace(new RegExp("\\[" + projectKey + "-([0-9]*)\\]\\([^\\)]*\\)", "g"), replacer);
 
     return markdown;
 }
