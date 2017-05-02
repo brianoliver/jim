@@ -160,10 +160,9 @@ function createIssue(github, username, token, repository, issue, comments, miles
                     created_at: issue.created_at,
                     body: "Was assigned to " + issue.assignee
                 });
+                // assign the issue the default username
+                issue.assignee = defaultusername;
             }
-
-            // assign the issue the default username
-            issue.assignee = defaultusername;
         }
 
         // add a comment indicating the issue was automatically imported
@@ -194,6 +193,10 @@ function createIssue(github, username, token, repository, issue, comments, miles
         delete issue.reporter;
         delete issue.resolution;
         delete issue.fixVersion;
+
+        if (!(issue.assignee)) {
+            delete issue.assignee;
+        }
 
         // create the issue using the issue importer API
         var postRequestOptions = {
