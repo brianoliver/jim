@@ -6,6 +6,10 @@ html(lang="en")
 
     body
         h1 Jira Issue Migrator (JIM)!
+        h2 Migrate issues from java.net to Github
+        p Note: Consider adding collaborators before migrating issues to link assignees properly. Before migrating, please look at this-
+            a(href='https://github.com/brianoliver/jim/blob/master/README.md') README
+
 
 
     form(method='post' action='/migrate')
@@ -44,9 +48,13 @@ html(lang="en")
 
         input(type="submit" value="Migrate")
 
+
+    body
+        h2 Add collaborators into your Github project
+
     form(method='post' action='/collaborators')
         fieldset
-                Import Collaborators:
+                legend Import Collaborators:
 
                 p
                     label(for='repository') Repository Name (not URL):

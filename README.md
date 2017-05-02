@@ -80,15 +80,15 @@ For a demo of running Jim on the Google Cloud Platform using Kubernetes see the 
 Here is a general flow of what you might want to do to migrate a project: 
 1. Create a file named `mapping.txt` in the base folder. It should contain the java.net user names to Github user names mapping of users
 
-E.g., 
+E.g.,
 ```
 abc abc
 def def
 ```
 
-2. Import collaborators into Github: On the localhost page, you will see an option to import collaborators. This needs to be done before the migration of a project in order to be able to assign issues correctly. As mentioned [here](https://help.github.com/articles/assigning-issues-and-pull-requests-to-other-github-users/), users need to be added as collaborators before we can assign them to an issue. Specify the required options to import all the Github user names present in the mapping file(`mapping.txt`) as collaborators(with read access) into the project
+2. Import collaborators into Github: On the localhost page(`http://localhost:3000/`), you will see an option to import collaborators. This needs to be done before the migration of a project in order to be able to assign issues correctly. As mentioned [here](https://help.github.com/articles/assigning-issues-and-pull-requests-to-other-github-users/), users need to be added as collaborators before we can assign them to an issue. Specify the required options to add all the Github users in the mapping file(`mapping.txt`) as collaborators(with read access) for this repository
 
-3. Create a folder named `json`. The json dump will be generated and placed in this folder. If the project name is `glassfish`, a json file named `GLASSFISH.json` would be generated in this folder. Note that JIM will check for an existing file named `{project}.json` before downloading the issues from JIRA. In case it is found, JIM will read the JSON file instead of downloading the issues. This feature helps to stop and re-start the migration quickly if needed. 
+3. Create a folder named `json`. The json dump will be generated and placed in this folder. If the project name is `glassfish`, a json file named `GLASSFISH.json` would be generated in this folder. Note that JIM will check for an existing file named `{project}.json` before downloading the issues from JIRA. In case it is found, JIM will read the JSON file instead of downloading the issues. This feature helps to stop and re-start the migration quickly if needed
 
 4. After choosing the source project from drop-down list, you will have to specify the following options before starting the migration:
 
@@ -96,7 +96,7 @@ def def
      
      b. Repository Owner: If the repository is owned by an organization, specify the organization name (E.g., `javaee`). Otherwise, specify the name of the repository owner
      
-     c. Default Issue Owner: For issues with unknown assignees(because the assignee's Github username is not present in the mapping file), JIM assign issues to this user. Enter a valid Github user name in this field
+     c. Default Issue Owner: For issues with unknown assignees(because the assignee's Github username is not present in the mapping file), JIM assign issues to this user. Enter a valid Github user name in this field. Leave this field empty to leave such issues unassigned
      
      d. Issue Offset: If the destination repository already has some Pull Requests or Issues(Look at https://github.com/brianoliver/jim/issues/21), specify the offset here. Normally, this should be set to zero
      
