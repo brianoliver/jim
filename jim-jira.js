@@ -214,7 +214,7 @@ function jiraProcessXmlExport(xml, project, key) {
             // Check the labels once for formatting issues
             issue.labels.forEach(function (label, index) {
                 // Replace all commas
-                issue.labels[index].replace(/,/g, ';');
+                issue.labels[index] = label.replace(/,/g, ';');
             });
 
             // extract the assignee and reporter
